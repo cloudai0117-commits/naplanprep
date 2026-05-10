@@ -1,0 +1,99 @@
+#!/bin/sh
+# ----------------------------------------------------------------------------
+# Licensed to the Apache Software Foundation (ASF) under one
+# or more contributor license agreements.  See the NOTICE file
+# distributed with this work for additional information
+# regarding copyright ownership.  The ASF licenses this file
+# to you under the Apache License, Version 2.0 (the
+# "License"); you may not use this file except in compliance
+# with the License.  You may obtain a copy of the License at
+#
+#    https://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing,
+# software distributed under the License is distributed on an
+# "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+# KIND, either express or implied.  See the License for the
+# specific language governing permissions and limitations
+# under the License.
+# ----------------------------------------------------------------------------
+
+# ----------------------------------------------------------------------------
+# Apache Maven Wrapper startup batch script, version 3.2.0
+# ----------------------------------------------------------------------------
+
+# If JAVA_HOME is set, use it; otherwise find java from PATH
+if [ -n "$JAVA_HOME" ]; then
+    JAVACMD="$JAVA_HOME/bin/java"
+    if [ ! -x "$JAVACMD" ]; then
+        echo "JAVA_HOME is set to an invalid directory: $JAVA_HOME"
+        exit 1
+    fi
+else
+    JAVACMD="java"
+    if ! command -v java > /dev/null 2>&1; then
+        echo "JAVA_HOME not set and java command not found. Please install Java."
+        exit 1
+    fi
+fi
+
+# Find the project basedir
+MAVEN_PROJECTBASEDIR="${MAVEN_BASEDIR:-}"
+if [ -z "$MAVEN_PROJECTBASEDIR" ]; then
+    MAVEN_PROJECTBASEDIR="$(pwd)"
+    wdir="$MAVEN_PROJECTBASEDIR"
+    while [ "$wdir" != '/' ]; do
+        if [ -f "$wdir/pom.xml" ]; then
+            MAVEN_PROJECTBASEDIR="$wdir"
+            break
+        fi
+        wdir=$(dirname "$wdir")
+    done
+fi
+export MAVEN_PROJECTBASEDIR
+
+MAVEN_WRAPPER_PROPERTIES="$MAVEN_PROJECTBASEDIR/.mvn/wrapper/maven-wrapper.properties"
+MAVEN_WRAPPER_JAR="$MAVEN_PROJECTBASEDIR/.mvn/wrapper/maven-wrapper.jar"
+
+# Read distribution URL from properties
+DISTRIBUTION_URL=""
+if [ -f "$MAVEN_WRAPPER_PROPERTIES" ]; then
+    DISTRIBUTION_URL=$(grep -E '^distributionUrl=' "$MAVEN_WRAPPER_PROPERTIES" | sed -e 's/distributionUrl=//')
+fi
+
+if [ -z "$DISTRIBUTION_URL" ]; then
+    echo "No distributionUrl found in $MAVEN_WRAPPER_PROPERTIES"
+    exit 1
+fi
+
+MAVEN_USER_HOME="${MAVEN_USER_HOME:-$HOME/.m2/wrapper}"
+MAVEN_VERSION=$(echo "$DISTRIBUTION_URL" | sed -E 's/.*apache-maven-([0-9.]+)-.*/\1/')
+MAVEN_HOME="$MAVEN_USER_HOME/dists/apache-maven-$MAVEN_VERSION"
+
+if [ ! -d "$MAVEN_HOME/bin" ]; then
+    echo "Downloading Apache Maven $MAVEN_VERSION..."
+    mkdir -p "$MAVEN_HOME"
+    MAVEN_TMP="$MAVEN_HOME/maven-download.zip"
+
+    # Try wget then curl
+    if command -v wget > /dev/null 2>&1; then
+        wget -q "$DISTRIBUTION_URL" -O "$MAVEN_TMP" || { echo "Failed to download Maven"; exit 1; }
+    elif command -v curl > /dev/null 2>&1; then
+        curl -fsSL "$DISTRIBUTION_URL" -o "$MAVEN_TMP" || { echo "Failed to download Maven"; exit 1; }
+    else
+        echo "Neither wget nor curl available. Please install Maven manually."
+        exit 1
+    fi
+
+    unzip -q "$MAVEN_TMP" -d "$MAVEN_USER_HOME/dists/" || { echo "Failed to unzip Maven"; exit 1; }
+    rm -f "$MAVEN_TMP"
+    echo "Maven $MAVEN_VERSION installed."
+fi
+
+MVNW_VERBOSE="${MVNW_VERBOSE:-false}"
+if [ "$MVNW_VERBOSE" = true ]; then
+    echo "Apache Maven $MAVEN_VERSION"
+    echo "Maven home: $MAVEN_HOME"
+fi
+
+exec "$MAVEN_HOME/bin/mvn" "$@"
