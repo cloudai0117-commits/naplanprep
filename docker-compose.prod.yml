@@ -1,0 +1,102 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: always
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-naplanprep_prod}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - postgres_prod_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+
+  redis:
+    image: redis:7-alpine
+    restart: always
+    command: >
+      redis-server
+      --maxmemory 512mb
+      --maxmemory-policy allkeys-lru
+      --requirepass ${REDIS_PASSWORD}
+      --appendonly yes
+    volumes:
+      - redis_prod_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    image: ghcr.io/${GITHUB_REPOSITORY_OWNER:-cloudai0117-commits}/naplanprep-backend:prod-latest
+    restart: always
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      SPRING_PROFILES_ACTIVE: prod
+      SPRING_DATASOURCE_URL: ${SPRING_DATASOURCE_URL}
+      SPRING_DATASOURCE_USERNAME: ${SPRING_DATASOURCE_USERNAME}
+      SPRING_DATASOURCE_PASSWORD: ${SPRING_DATASOURCE_PASSWORD}
+      SPRING_DATA_REDIS_HOST: ${SPRING_DATA_REDIS_HOST:-redis}
+      SPRING_DATA_REDIS_PORT: ${SPRING_DATA_REDIS_PORT:-6379}
+      SPRING_DATA_REDIS_PASSWORD: ${REDIS_PASSWORD}
+      APP_JWT_PRIVATE_KEY_PATH: /app/keys/private.pem
+      APP_JWT_PUBLIC_KEY_PATH: /app/keys/public.pem
+      APP_STRIPE_SECRET_KEY: ${APP_STRIPE_SECRET_KEY}
+      APP_STRIPE_WEBHOOK_SECRET: ${APP_STRIPE_WEBHOOK_SECRET}
+      APP_CORS_ALLOWED_ORIGINS: ${APP_CORS_ALLOWED_ORIGINS:-https://naplanprep.com.au,https://admin.naplanprep.com.au}
+      JAVA_OPTS: "-Xms512m -Xmx1g -XX:+UseG1GC"
+    ports:
+      - "8080:8080"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8080/actuator/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 90s
+    volumes:
+      - jwt_keys_prod:/app/keys:ro
+    deploy:
+      resources:
+        limits:
+          memory: 1.5G
+
+  frontend:
+    image: ghcr.io/${GITHUB_REPOSITORY_OWNER:-cloudai0117-commits}/naplanprep-frontend:prod-latest
+    restart: always
+    depends_on:
+      - backend
+    ports:
+      - "5173:80"
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+
+  admin:
+    image: ghcr.io/${GITHUB_REPOSITORY_OWNER:-cloudai0117-commits}/naplanprep-admin:prod-latest
+    restart: always
+    depends_on:
+      - backend
+    ports:
+      - "5174:80"
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+
+volumes:
+  postgres_prod_data:
+  redis_prod_data:
+  jwt_keys_prod:

@@ -1,0 +1,150 @@
+name: Deploy UAT
+
+on:
+  push:
+    branches: [develop]
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_PREFIX: ${{ github.repository_owner }}/naplanprep
+
+jobs:
+  build-and-push:
+    name: Build & Push Docker Images
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    outputs:
+      image-tag: ${{ steps.meta.outputs.version }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Log in to Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Generate image tag
+        id: meta
+        run: echo "version=uat-$(echo $GITHUB_SHA | head -c 8)" >> $GITHUB_OUTPUT
+
+      - name: Build & push backend
+        uses: docker/build-push-action@v5
+        with:
+          context: ./backend
+          push: true
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-backend:${{ steps.meta.outputs.version }}
+            ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-backend:uat-latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build & push frontend
+        uses: docker/build-push-action@v5
+        with:
+          context: ./frontend
+          push: true
+          build-args: |
+            VITE_API_URL=${{ vars.UAT_API_URL }}
+            VITE_STRIPE_KEY=${{ secrets.UAT_STRIPE_PUBLISHABLE_KEY }}
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-frontend:${{ steps.meta.outputs.version }}
+            ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-frontend:uat-latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build & push admin panel
+        uses: docker/build-push-action@v5
+        with:
+          context: ./admin-panel
+          push: true
+          build-args: |
+            VITE_API_URL=${{ vars.UAT_API_URL }}
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-admin:${{ steps.meta.outputs.version }}
+            ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-admin:uat-latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  deploy-uat:
+    name: Deploy to UAT
+    runs-on: ubuntu-latest
+    needs: build-and-push
+    environment: uat
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.UAT_HOST }}
+          username: ${{ secrets.UAT_SSH_USER }}
+          key: ${{ secrets.UAT_SSH_KEY }}
+          script: |
+            set -e
+            cd /opt/naplanprep-uat
+
+            # Pull latest images
+            echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+            docker pull ghcr.io/${{ env.IMAGE_PREFIX }}-backend:uat-latest
+            docker pull ghcr.io/${{ env.IMAGE_PREFIX }}-frontend:uat-latest
+            docker pull ghcr.io/${{ env.IMAGE_PREFIX }}-admin:uat-latest
+
+            # Write env file
+            cat > .env.uat << 'ENVEOF'
+            POSTGRES_DB=${{ secrets.UAT_DB_NAME }}
+            POSTGRES_USER=${{ secrets.UAT_DB_USER }}
+            POSTGRES_PASSWORD=${{ secrets.UAT_DB_PASSWORD }}
+            SPRING_DATASOURCE_URL=${{ secrets.UAT_DB_URL }}
+            SPRING_DATASOURCE_USERNAME=${{ secrets.UAT_DB_USER }}
+            SPRING_DATASOURCE_PASSWORD=${{ secrets.UAT_DB_PASSWORD }}
+            SPRING_DATA_REDIS_HOST=${{ secrets.UAT_REDIS_HOST }}
+            SPRING_DATA_REDIS_PORT=6379
+            APP_JWT_PRIVATE_KEY_PATH=${{ secrets.UAT_JWT_PRIVATE_KEY_PATH }}
+            APP_JWT_PUBLIC_KEY_PATH=${{ secrets.UAT_JWT_PUBLIC_KEY_PATH }}
+            APP_STRIPE_SECRET_KEY=${{ secrets.UAT_STRIPE_SECRET_KEY }}
+            APP_STRIPE_WEBHOOK_SECRET=${{ secrets.UAT_STRIPE_WEBHOOK_SECRET }}
+            APP_CORS_ALLOWED_ORIGINS=https://uat.naplanprep.com.au,https://admin.uat.naplanprep.com.au
+            ENVEOF
+
+            # Rolling restart with zero-downtime
+            docker compose -f docker-compose.uat.yml --env-file .env.uat pull
+            docker compose -f docker-compose.uat.yml --env-file .env.uat up -d --remove-orphans
+
+            # Wait for health
+            echo "Waiting for backend health..."
+            for i in $(seq 1 30); do
+              if curl -sf http://localhost:8080/actuator/health > /dev/null; then
+                echo "Backend healthy"
+                break
+              fi
+              sleep 5
+            done
+
+            docker compose -f docker-compose.uat.yml ps
+
+      - name: Run smoke tests
+        run: |
+          sleep 10
+          curl -f ${{ vars.UAT_API_URL }}/actuator/health || exit 1
+          echo "UAT smoke test passed"
+
+      - name: Notify on success
+        if: success()
+        run: |
+          echo "UAT deployment succeeded: ${{ needs.build-and-push.outputs.image-tag }}"
+
+      - name: Notify on failure
+        if: failure()
+        run: |
+          echo "UAT deployment FAILED for commit ${{ github.sha }}"
+          exit 1
