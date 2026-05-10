@@ -1,0 +1,41 @@
+spring:
+  datasource:
+    url: jdbc:postgresql://localhost:5432/naplanprep_dev
+    username: postgres
+    password: postgres
+    driver-class-name: org.postgresql.Driver
+    hikari:
+      maximum-pool-size: 10
+  data:
+    redis:
+      host: localhost
+      port: 6379
+      timeout: 2000ms
+  jpa:
+    show-sql: true
+
+logging:
+  level:
+    root: INFO
+    au.com.naplanprep: DEBUG
+    org.springframework.security: DEBUG
+    org.hibernate.SQL: DEBUG
+
+app:
+  jwt:
+    private-key-path: classpath:keys/dev-private.pem
+    public-key-path: classpath:keys/dev-public.pem
+    access-token-expiry: 900
+    refresh-token-expiry: 604800
+  stripe:
+    secret-key: sk_test_placeholder_replace_with_real_test_key
+    webhook-secret: whsec_placeholder_replace_with_real_webhook_secret
+    publishable-key: pk_test_placeholder_replace_with_real_test_key
+  cors:
+    allowed-origins:
+      - http://localhost:5173
+      - http://localhost:5174
+  frontend-url: http://localhost:5173
+  rate-limit:
+    auth-attempts: 5
+    auth-lockout-minutes: 15

@@ -1,0 +1,38 @@
+spring:
+  datasource:
+    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/naplanprep_uat
+    username: ${DB_USERNAME:postgres}
+    password: ${DB_PASSWORD:postgres}
+    driver-class-name: org.postgresql.Driver
+    hikari:
+      maximum-pool-size: 20
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD:}
+      timeout: 2000ms
+
+logging:
+  level:
+    root: INFO
+    au.com.naplanprep: INFO
+
+app:
+  jwt:
+    private-key-path: ${JWT_PRIVATE_KEY_PATH}
+    public-key-path: ${JWT_PUBLIC_KEY_PATH}
+    access-token-expiry: 900
+    refresh-token-expiry: 604800
+  stripe:
+    secret-key: ${STRIPE_SECRET_KEY}
+    webhook-secret: ${STRIPE_WEBHOOK_SECRET}
+    publishable-key: ${STRIPE_PUBLISHABLE_KEY}
+  cors:
+    allowed-origins:
+      - https://uat.naplanprep.com.au
+      - https://admin.uat.naplanprep.com.au
+  frontend-url: https://uat.naplanprep.com.au
+  rate-limit:
+    auth-attempts: 5
+    auth-lockout-minutes: 15

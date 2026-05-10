@@ -1,0 +1,64 @@
+# Java/Maven
+backend/target/
+backend/.mvn/
+*.class
+*.jar
+*.war
+*.nar
+*.ear
+*.zip
+*.tar.gz
+*.rar
+hs_err_pid*
+
+# Node
+node_modules/
+frontend/node_modules/
+admin-panel/node_modules/
+dist/
+frontend/dist/
+admin-panel/dist/
+.pnp
+.pnp.js
+
+# Environment files (secrets)
+.env
+.env.local
+.env.*.local
+backend/.env
+frontend/.env.local
+admin-panel/.env.local
+
+# IDE
+.idea/
+*.iml
+*.ipr
+*.iws
+.vscode/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Docker
+.docker/
+
+# Keys
+*.pem
+*.key
+*.p12
+*.jks
+backend/src/main/resources/keys/
+
+# Test output
+test-results/
+coverage/

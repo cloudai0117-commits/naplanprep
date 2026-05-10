@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git -C C:\\\\Badal\\\\Apps\\\\Naplan\\\\naplanprep remote -v)",
+      "PowerShell(git *)",
+      "Skill(update-config)"
+    ]
+  }
+}
