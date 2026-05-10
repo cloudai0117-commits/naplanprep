@@ -3,7 +3,12 @@
     "allow": [
       "Bash(git -C C:\\\\Badal\\\\Apps\\\\Naplan\\\\naplanprep remote -v)",
       "PowerShell(git *)",
-      "Skill(update-config)"
+      "Skill(update-config)",
+      "Bash(git add *)",
+      "Bash(git commit *)",
+      "Bash(git push *)",
+      "Bash(echo \"Exit: $?\")",
+      "Bash(git ls-remote *)"
     ]
   }
 }
