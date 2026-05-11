@@ -52,6 +52,10 @@ public class ExamSession {
 
     private Integer timeLimitSeconds;
 
+    /** Null for ad-hoc practice sessions; set for admin-created exam sessions. */
+    @Column(name = "exam_id")
+    private UUID examId;
+
     @CreationTimestamp
     private Instant createdAt;
 

@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line } from 'recharts'
 import apiClient from '@/api/client'
 import { useAuthStore } from '@/store/authStore'
@@ -13,8 +13,18 @@ const domainColors: Record<string, string> = {
   GRAMMAR_PUNCTUATION: '#ef4444',
 }
 
+const domainLabel = (d: string) => d.replace(/_/g, ' ')
+
+const tierBadge = (tier: string) => {
+  if (tier === 'FREE') return 'badge-gray'
+  if (tier === 'STANDARD') return 'badge-green'
+  if (tier === 'PREMIUM') return 'badge-blue'
+  return 'badge-blue'
+}
+
 export default function Dashboard() {
   const { user } = useAuthStore()
+  const navigate = useNavigate()
 
   const { data: overview, isLoading } = useQuery({
     queryKey: ['progress-overview'],
@@ -29,6 +39,11 @@ export default function Dashboard() {
   const { data: recommendations } = useQuery({
     queryKey: ['recommendations'],
     queryFn: () => apiClient.get('/progress/recommendations').then((r) => r.data.data),
+  })
+
+  const { data: availableExams } = useQuery({
+    queryKey: ['available-exams'],
+    queryFn: () => apiClient.get('/exams/available').then((r) => r.data.data),
   })
 
   const trendData = overview?.recentTrend || []
@@ -159,6 +174,61 @@ export default function Dashboard() {
                 </div>
               </div>
             ))}
+          </div>
+        </div>
+      )}
+
+      {/* Available Exams */}
+      {availableExams && availableExams.length > 0 && (
+        <div className="card">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-lg font-semibold text-gray-900">Available Exams</h2>
+            <span className="text-xs text-gray-500">{availableExams.filter((e: any) => e.availability === 'AVAILABLE').length} ready to take</span>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+            {availableExams.map((exam: any) => {
+              const isAvailable = exam.availability === 'AVAILABLE'
+              const isCompleted = exam.alreadyAttempted
+              return (
+                <div
+                  key={exam.id}
+                  className={`border rounded-lg p-4 transition-colors ${
+                    isCompleted
+                      ? 'border-green-200 bg-green-50'
+                      : isAvailable
+                      ? 'border-gray-200 hover:border-primary-300 hover:bg-primary-50 cursor-pointer'
+                      : 'border-gray-200 bg-gray-50 opacity-70'
+                  }`}
+                  onClick={() => isAvailable || isCompleted ? navigate(`/exams/${exam.id}`) : undefined}
+                >
+                  <div className="flex items-start justify-between mb-2">
+                    <h3 className="font-medium text-gray-800 text-sm leading-tight">{exam.title}</h3>
+                    <span className={`badge text-xs ml-2 flex-shrink-0 ${tierBadge(exam.requiredTier)}`}>
+                      {exam.requiredTier}
+                    </span>
+                  </div>
+                  <p className="text-xs text-gray-500 mb-3">
+                    Year {exam.yearLevel} · {domainLabel(exam.domain)} · {exam.questionCount}Q
+                  </p>
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs text-gray-500">
+                      {Math.floor(exam.timeLimitSeconds / 60)}min
+                    </span>
+                    {isCompleted ? (
+                      <span className="text-xs text-green-600 font-medium">Completed</span>
+                    ) : exam.availability === 'UPGRADE_REQUIRED' ? (
+                      <span className="text-xs text-yellow-600 font-medium">Upgrade required</span>
+                    ) : exam.availability === 'UPCOMING' ? (
+                      <span className="text-xs text-blue-600 font-medium">Coming soon</span>
+                    ) : exam.availability === 'EXPIRED' ? (
+                      <span className="text-xs text-gray-500 font-medium">Expired</span>
+                    ) : (
+                      <span className="text-xs text-primary-600 font-medium">Start →</span>
+                    )}
+                  </div>
+                </div>
+              )
+            })}
           </div>
         </div>
       )}

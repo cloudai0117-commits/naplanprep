@@ -1,25 +1,21 @@
-name: CI
+name: CI — Test & Build
 
 on:
   pull_request:
     branches: [main, develop]
-  push:
-    branches: [develop]
 
 jobs:
   backend-test:
     name: Backend Tests
     runs-on: ubuntu-latest
-
     services:
       postgres:
         image: postgres:16-alpine
         env:
           POSTGRES_DB: naplanprep_test
-          POSTGRES_USER: postgres
-          POSTGRES_PASSWORD: postgres
-        ports:
-          - 5432:5432
+          POSTGRES_USER: testuser
+          POSTGRES_PASSWORD: testpass
+        ports: ["5432:5432"]
         options: >-
           --health-cmd pg_isready
           --health-interval 10s
@@ -27,8 +23,7 @@ jobs:
           --health-retries 5
       redis:
         image: redis:7-alpine
-        ports:
-          - 6379:6379
+        ports: ["6379:6379"]
         options: >-
           --health-cmd "redis-cli ping"
           --health-interval 10s
@@ -44,18 +39,24 @@ jobs:
           cache: maven
 
       - name: Run backend tests
-        working-directory: ./backend
-        run: ./mvnw verify -B
+        run: cd backend && ./mvnw verify -P test -B
         env:
-          SPRING_PROFILES_ACTIVE: dev
+          SPRING_PROFILES_ACTIVE: test
           SPRING_DATASOURCE_URL: jdbc:postgresql://localhost:5432/naplanprep_test
-          SPRING_DATASOURCE_USERNAME: postgres
-          SPRING_DATASOURCE_PASSWORD: postgres
+          SPRING_DATASOURCE_USERNAME: testuser
+          SPRING_DATASOURCE_PASSWORD: testpass
           SPRING_DATA_REDIS_HOST: localhost
           SPRING_DATA_REDIS_PORT: 6379
 
-  frontend-check:
-    name: Frontend Lint & Build
+      - name: Upload test results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: backend-test-results
+          path: backend/target/surefire-reports/
+
+  frontend-test:
+    name: Frontend Tests
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -65,20 +66,13 @@ jobs:
           cache: 'npm'
           cache-dependency-path: frontend/package-lock.json
 
-      - name: Install frontend deps
-        working-directory: ./frontend
-        run: npm ci
+      - run: cd frontend && npm ci
+      - run: cd frontend && npm run lint
+      - run: cd frontend && npm run type-check
+      - run: cd frontend && npm test -- --coverage --run
 
-      - name: Lint frontend
-        working-directory: ./frontend
-        run: npm run lint
-
-      - name: Build frontend
-        working-directory: ./frontend
-        run: npm run build
-
-  admin-check:
-    name: Admin Panel Lint & Build
+  admin-test:
+    name: Admin Panel Tests
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -88,14 +82,38 @@ jobs:
           cache: 'npm'
           cache-dependency-path: admin-panel/package-lock.json
 
-      - name: Install admin deps
-        working-directory: ./admin-panel
-        run: npm ci
+      - run: cd admin-panel && npm ci
+      - run: cd admin-panel && npm run lint
+      - run: cd admin-panel && npm run type-check
+      - run: cd admin-panel && npm test -- --run
 
-      - name: Lint admin
-        working-directory: ./admin-panel
-        run: npm run lint
+  security-scan:
+    name: Security Scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
 
-      - name: Build admin
-        working-directory: ./admin-panel
-        run: npm run build
+      - name: Run OWASP Dependency Check
+        uses: dependency-check/Dependency-Check_Action@main
+        with:
+          project: 'naplanprep'
+          path: './backend'
+          format: 'HTML'
+          args: '--failOnCVSS 7'
+
+      - name: Upload OWASP report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: owasp-dependency-report
+          path: reports/
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Frontend npm audit
+        run: cd frontend && npm audit --audit-level=high
+
+      - name: Admin npm audit
+        run: cd admin-panel && npm audit --audit-level=high

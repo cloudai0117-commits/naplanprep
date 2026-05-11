@@ -6,6 +6,7 @@ const navItems = [
   { path: '/dashboard', label: 'Dashboard', icon: '📊' },
   { path: '/users', label: 'Users', icon: '👥' },
   { path: '/questions', label: 'Question Bank', icon: '📚' },
+  { path: '/exams', label: 'Exams', icon: '📝' },
   { path: '/subscriptions', label: 'Subscriptions', icon: '💳' },
   { path: '/audit', label: 'Audit Log', icon: '🔍' },
   { path: '/settings', label: 'Settings', icon: '⚙️' },
@@ -64,7 +65,7 @@ export default function AdminLayout() {
       <div className="flex-1 flex flex-col overflow-hidden">
         <div className="bg-white border-b border-gray-200 px-6 py-3 flex items-center justify-between">
           <h1 className="text-base font-semibold text-gray-800">
-            {navItems.find((n) => n.path === location.pathname)?.label || 'Admin'}
+            {navItems.find((n) => location.pathname === n.path || location.pathname.startsWith(n.path + '/'))?.label || 'Admin'}
           </h1>
           <span className="text-xs text-gray-500">PLATFORM_ADMIN</span>
         </div>

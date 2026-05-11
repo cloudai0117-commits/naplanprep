@@ -1,9 +1,8 @@
 package au.com.naplanprep.exam.controller;
 
 import au.com.naplanprep.common.ApiResponse;
-import au.com.naplanprep.exam.dto.StartExamRequest;
+import au.com.naplanprep.exam.dto.*;
 import au.com.naplanprep.exam.entity.ExamAnswer;
-import au.com.naplanprep.exam.entity.ExamResult;
 import au.com.naplanprep.exam.entity.ExamSession;
 import au.com.naplanprep.exam.service.ExamService;
 import jakarta.validation.Valid;
@@ -17,6 +16,7 @@ import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
@@ -27,12 +27,14 @@ public class ExamController {
 
     private final ExamService examService;
 
+    // ─── Ad-hoc practice sessions ────────────────────────────────
+
     @PostMapping("/sessions")
     public ResponseEntity<ApiResponse<ExamSession>> startExam(
         @Valid @RequestBody StartExamRequest req,
-        @AuthenticationPrincipal UserDetails userDetails
+        @AuthenticationPrincipal UserDetails principal
     ) {
-        UUID userId = UUID.fromString(userDetails.getUsername());
+        UUID userId = UUID.fromString(principal.getUsername());
         return ResponseEntity.status(HttpStatus.CREATED)
             .body(ApiResponse.success(examService.startExam(userId, req)));
     }
@@ -40,51 +42,96 @@ public class ExamController {
     @GetMapping("/sessions/{id}")
     public ResponseEntity<ApiResponse<ExamSession>> getSession(
         @PathVariable UUID id,
-        @AuthenticationPrincipal UserDetails userDetails
+        @AuthenticationPrincipal UserDetails principal
     ) {
-        UUID userId = UUID.fromString(userDetails.getUsername());
+        UUID userId = UUID.fromString(principal.getUsername());
         return ResponseEntity.ok(ApiResponse.success(examService.getSession(id, userId)));
+    }
+
+    /** Returns ordered questions for any session — used by the exam player. */
+    @GetMapping("/sessions/{id}/questions")
+    public ResponseEntity<ApiResponse<List<QuestionSummary>>> getSessionQuestions(
+        @PathVariable UUID id,
+        @AuthenticationPrincipal UserDetails principal
+    ) {
+        UUID userId = UUID.fromString(principal.getUsername());
+        return ResponseEntity.ok(ApiResponse.success(examService.getSessionQuestions(id, userId)));
     }
 
     @PostMapping("/sessions/{id}/answer")
     public ResponseEntity<ApiResponse<ExamAnswer>> submitAnswer(
         @PathVariable UUID id,
         @RequestBody Map<String, Object> body,
-        @AuthenticationPrincipal UserDetails userDetails
+        @AuthenticationPrincipal UserDetails principal
     ) {
-        UUID userId = UUID.fromString(userDetails.getUsername());
+        UUID userId = UUID.fromString(principal.getUsername());
         UUID questionId = UUID.fromString(body.get("questionId").toString());
         @SuppressWarnings("unchecked")
         Map<String, Object> answer = (Map<String, Object>) body.get("answer");
         Boolean flagged = body.containsKey("flagged") ? (Boolean) body.get("flagged") : null;
-        return ResponseEntity.ok(ApiResponse.success(examService.submitAnswer(id, userId, questionId, answer, flagged)));
+        return ResponseEntity.ok(ApiResponse.success(
+            examService.submitAnswer(id, userId, questionId, answer, flagged)));
     }
 
     @PostMapping("/sessions/{id}/submit")
-    public ResponseEntity<ApiResponse<ExamResult>> submitExam(
+    public ResponseEntity<ApiResponse<ExamResultDetailResponse>> submitExam(
         @PathVariable UUID id,
-        @AuthenticationPrincipal UserDetails userDetails
+        @AuthenticationPrincipal UserDetails principal
     ) {
-        UUID userId = UUID.fromString(userDetails.getUsername());
+        UUID userId = UUID.fromString(principal.getUsername());
         return ResponseEntity.ok(ApiResponse.success(examService.submitExam(id, userId)));
     }
 
-    @GetMapping("/results/{sessionId}")
-    public ResponseEntity<ApiResponse<ExamResult>> getResult(
-        @PathVariable UUID sessionId,
-        @AuthenticationPrincipal UserDetails userDetails
+    // ─── Admin-created exam flow ──────────────────────────────────
+
+    @GetMapping("/available")
+    public ResponseEntity<ApiResponse<List<AvailableExamResponse>>> getAvailableExams(
+        @AuthenticationPrincipal UserDetails principal
     ) {
-        UUID userId = UUID.fromString(userDetails.getUsername());
-        return ResponseEntity.ok(ApiResponse.success(examService.getResult(sessionId, userId)));
+        UUID userId = UUID.fromString(principal.getUsername());
+        return ResponseEntity.ok(ApiResponse.success(examService.getAvailableExams(userId)));
+    }
+
+    @PostMapping("/{examId}/start")
+    public ResponseEntity<ApiResponse<Map<String, Object>>> startAdminExam(
+        @PathVariable UUID examId,
+        @AuthenticationPrincipal UserDetails principal
+    ) {
+        UUID userId = UUID.fromString(principal.getUsername());
+        return ResponseEntity.status(HttpStatus.CREATED)
+            .body(ApiResponse.success(examService.startAdminExam(examId, userId)));
+    }
+
+    // ─── Results ─────────────────────────────────────────────────
+
+    @GetMapping("/results/{sessionId}")
+    public ResponseEntity<ApiResponse<ExamResultDetailResponse>> getDetailedResult(
+        @PathVariable UUID sessionId,
+        @AuthenticationPrincipal UserDetails principal
+    ) {
+        UUID userId = UUID.fromString(principal.getUsername());
+        return ResponseEntity.ok(ApiResponse.success(examService.getDetailedResult(sessionId, userId)));
+    }
+
+    @GetMapping("/my-results")
+    public ResponseEntity<ApiResponse<Page<ExamSession>>> getMyResults(
+        @AuthenticationPrincipal UserDetails principal,
+        @PageableDefault(size = 20) Pageable pageable
+    ) {
+        UUID userId = UUID.fromString(principal.getUsername());
+        Page<ExamSession> history = examService.getHistory(userId, pageable);
+        return ResponseEntity.ok(ApiResponse.success(history,
+            Map.of("totalElements", history.getTotalElements())));
     }
 
     @GetMapping("/history")
     public ResponseEntity<ApiResponse<Page<ExamSession>>> getHistory(
-        @AuthenticationPrincipal UserDetails userDetails,
+        @AuthenticationPrincipal UserDetails principal,
         @PageableDefault(size = 20) Pageable pageable
     ) {
-        UUID userId = UUID.fromString(userDetails.getUsername());
+        UUID userId = UUID.fromString(principal.getUsername());
         Page<ExamSession> history = examService.getHistory(userId, pageable);
-        return ResponseEntity.ok(ApiResponse.success(history, Map.of("totalElements", history.getTotalElements())));
+        return ResponseEntity.ok(ApiResponse.success(history,
+            Map.of("totalElements", history.getTotalElements())));
     }
 }

@@ -11,6 +11,8 @@ import ExamSelection from '@/features/exam/ExamSelection'
 import ExamPlayer from '@/features/exam/ExamPlayer'
 import ResultsPage from '@/features/exam/ResultsPage'
 import ExamHistory from '@/features/exam/ExamHistory'
+import ExamInstructionsPage from '@/features/exam/ExamInstructionsPage'
+import ExamResultsDetailPage from '@/features/exam/ExamResultsDetailPage'
 import PricingPage from '@/features/subscription/PricingPage'
 import ParentDashboard from '@/features/parent/ParentDashboard'
 import ProfileSettings from '@/features/profile/ProfileSettings'
@@ -35,6 +37,8 @@ function App() {
           <Route element={<Layout />}>
             <Route path="/dashboard" element={<Dashboard />} />
             <Route path="/exams" element={<ExamSelection />} />
+            <Route path="/exams/:examId" element={<ExamInstructionsPage />} />
+            <Route path="/exams/:examId/results/:sessionId" element={<ExamResultsDetailPage />} />
             <Route path="/exams/:sessionId/play" element={<ExamPlayer />} />
             <Route path="/exams/:sessionId/results" element={<ResultsPage />} />
             <Route path="/history" element={<ExamHistory />} />

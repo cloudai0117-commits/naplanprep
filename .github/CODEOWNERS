@@ -1,0 +1,17 @@
+# Default — all files require review from a team member
+*                   @cloudai0117
+
+# Backend — Spring Boot API
+/backend/           @cloudai0117
+
+# Frontend — Student app
+/frontend/          @cloudai0117
+
+# Admin panel
+/admin-panel/       @cloudai0117
+
+# Infrastructure and CI/CD
+/.github/           @cloudai0117
+/scripts/           @cloudai0117
+/docs/              @cloudai0117
+docker-compose*.yml @cloudai0117

@@ -1,6 +1,6 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useQuery, useMutation } from '@tanstack/react-query'
 import apiClient from '@/api/client'
 
 function useTimer(expiresAt: string | undefined) {
@@ -25,7 +25,6 @@ function useTimer(expiresAt: string | undefined) {
 export default function ExamPlayer() {
   const { sessionId } = useParams<{ sessionId: string }>()
   const navigate = useNavigate()
-  const queryClient = useQueryClient()
   const [currentIdx, setCurrentIdx] = useState(0)
   const [answers, setAnswers] = useState<Record<string, string>>({})
   const [flagged, setFlagged] = useState<Record<string, boolean>>({})
@@ -39,14 +38,14 @@ export default function ExamPlayer() {
 
   const timer = useTimer(session?.expiresAt)
 
-  const questionIds: string[] = session?.questionIds || []
-  const currentQuestionId = questionIds[currentIdx]
-
-  const { data: questionData } = useQuery({
-    queryKey: ['question', currentQuestionId],
-    queryFn: () => apiClient.get(`/content/questions?status=PUBLISHED`).then((r) => r.data.data),
-    enabled: !!currentQuestionId,
+  const { data: questions = [], isLoading: questionsLoading } = useQuery({
+    queryKey: ['session-questions', sessionId],
+    queryFn: () => apiClient.get(`/exams/sessions/${sessionId}/questions`).then((r) => r.data.data),
+    enabled: !!sessionId,
   })
+
+  const currentQuestion = questions[currentIdx] || null
+  const currentQuestionId: string = currentQuestion?.id || ''
 
   const { mutate: submitAnswer } = useMutation({
     mutationFn: ({ questionId, answer }: { questionId: string; answer: string }) =>
@@ -59,8 +58,13 @@ export default function ExamPlayer() {
 
   const { mutate: submitExam, isPending: submitting } = useMutation({
     mutationFn: () => apiClient.post(`/exams/sessions/${sessionId}/submit`),
-    onSuccess: () => {
-      navigate(`/exams/${sessionId}/results`)
+    onSuccess: (res) => {
+      const examId = res.data.data?.examId
+      if (examId) {
+        navigate(`/exams/${examId}/results/${sessionId}`)
+      } else {
+        navigate(`/exams/${sessionId}/results`)
+      }
     },
   })
 
@@ -79,7 +83,7 @@ export default function ExamPlayer() {
     }
   }, [timer.remaining])
 
-  if (sessionLoading) {
+  if (sessionLoading || questionsLoading) {
     return (
       <div className="flex items-center justify-center min-h-96">
         <div className="text-gray-500">Loading exam...</div>
@@ -98,18 +102,22 @@ export default function ExamPlayer() {
     )
   }
 
-  const currentQuestion = questionData?.content?.[currentIdx] || null
   const answeredCount = Object.keys(answers).length
-  const progress = (answeredCount / questionIds.length) * 100
+  const progress = questions.length > 0 ? (answeredCount / questions.length) * 100 : 0
 
   return (
     <div className="fixed inset-0 bg-gray-50 flex flex-col">
       {/* Header */}
       <div className="bg-white border-b border-gray-200 px-4 py-3 flex items-center justify-between">
         <div className="flex items-center space-x-4">
-          <span className="font-semibold text-gray-800">
-            Question {currentIdx + 1} of {questionIds.length}
-          </span>
+          <div>
+            {session?.examTitle && (
+              <div className="text-xs text-gray-500 font-medium">{session.examTitle}</div>
+            )}
+            <span className="font-semibold text-gray-800">
+              Question {currentIdx + 1} of {questions.length}
+            </span>
+          </div>
           <div className="hidden md:flex items-center text-sm text-gray-600">
             <span className="w-24 bg-gray-200 rounded-full h-2 mr-2">
               <div
@@ -117,7 +125,7 @@ export default function ExamPlayer() {
                 style={{ width: `${progress}%` }}
               />
             </span>
-            {answeredCount}/{questionIds.length} answered
+            {answeredCount}/{questions.length} answered
           </div>
         </div>
         <div className={`font-mono text-lg font-bold ${timer.remaining < 300 ? 'text-red-600' : 'text-gray-800'}`}>
@@ -197,16 +205,16 @@ export default function ExamPlayer() {
         <div className="w-48 border-l border-gray-200 bg-white p-4 overflow-y-auto hidden lg:block">
           <div className="text-xs font-semibold text-gray-500 uppercase mb-3">Questions</div>
           <div className="grid grid-cols-4 gap-1.5">
-            {questionIds.map((qId, idx) => (
+            {questions.map((q: any, idx: number) => (
               <button
-                key={qId}
+                key={q.id}
                 onClick={() => setCurrentIdx(idx)}
                 className={`w-9 h-9 rounded text-xs font-medium transition-colors ${
                   idx === currentIdx
                     ? 'bg-primary-600 text-white'
-                    : flagged[qId]
+                    : flagged[q.id]
                     ? 'bg-orange-100 text-orange-700 border border-orange-300'
-                    : answers[qId]
+                    : answers[q.id]
                     ? 'bg-green-100 text-green-700 border border-green-300'
                     : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
                 }`}
@@ -242,8 +250,8 @@ export default function ExamPlayer() {
           ← Previous
         </button>
         <button
-          onClick={() => setCurrentIdx(Math.min(questionIds.length - 1, currentIdx + 1))}
-          disabled={currentIdx === questionIds.length - 1}
+          onClick={() => setCurrentIdx(Math.min(questions.length - 1, currentIdx + 1))}
+          disabled={currentIdx === questions.length - 1}
           className="btn-primary py-2 px-4 text-sm"
         >
           Next →
@@ -256,10 +264,10 @@ export default function ExamPlayer() {
           <div className="bg-white rounded-xl p-6 max-w-md w-full mx-4 shadow-xl">
             <h3 className="text-lg font-semibold text-gray-900 mb-2">Submit Exam?</h3>
             <p className="text-gray-600 text-sm mb-4">
-              You have answered {answeredCount} of {questionIds.length} questions.
-              {questionIds.length - answeredCount > 0 && (
+              You have answered {answeredCount} of {questions.length} questions.
+              {questions.length - answeredCount > 0 && (
                 <span className="text-orange-600 font-medium">
-                  {' '}{questionIds.length - answeredCount} unanswered questions.
+                  {' '}{questions.length - answeredCount} unanswered questions.
                 </span>
               )}
             </p>
