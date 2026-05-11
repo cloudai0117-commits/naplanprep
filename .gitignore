@@ -21,13 +21,21 @@ admin-panel/dist/
 .pnp
 .pnp.js
 
-# Environment files (secrets)
+# Environment files (secrets — never commit real values)
 .env
 .env.local
 .env.*.local
+.env.development
+.env.production
 backend/.env
+backend/.env.development
+backend/.env.production
 frontend/.env.local
+frontend/.env.development
+frontend/.env.production
 admin-panel/.env.local
+admin-panel/.env.development
+admin-panel/.env.production
 
 # IDE
 .idea/
