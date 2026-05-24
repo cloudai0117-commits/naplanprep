@@ -60,7 +60,8 @@ class ExamFlowIntegrationTest {
         question.setYearLevel(5);
         question.setDifficultyBand(1);
         question.setStatus(Question.QuestionStatus.PUBLISHED);
-        question.setOptions(Map.of("options", java.util.List.of("10", "11", "12", "13"), "correct", "12"));
+        question.setOptions(Map.of("options", java.util.List.of("10", "11", "12", "13")));
+        question.setCorrectAnswer(Map.of("value", "12"));
         question = questionRepository.save(question);
 
         exam = new Exam();

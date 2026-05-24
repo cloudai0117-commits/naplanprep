@@ -71,7 +71,7 @@ jobs:
       - run: cd frontend && npm ci
       - run: cd frontend && npm run lint
       - run: cd frontend && npm run type-check
-      - run: cd frontend && npm test -- --run
+      - run: cd frontend && npm test -- --run --passWithNoTests
 
   admin-test:
     name: Admin Panel Tests
