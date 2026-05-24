@@ -148,7 +148,7 @@ jobs:
             --build-env VITE_API_URL=${{ vars.UAT_API_URL }} \
             --build-env VITE_STRIPE_KEY=${{ secrets.STRIPE_TEST_PUBLISHABLE_KEY }} \
             --scope ${{ secrets.VERCEL_ORG_ID }} \
-            --yes
+            --prod --yes
         env:
           VERCEL_PROJECT_ID: ${{ secrets.VERCEL_FRONTEND_PROJECT_ID }}
           VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
@@ -173,7 +173,7 @@ jobs:
           vercel --token ${{ secrets.VERCEL_TOKEN }} \
             --build-env VITE_API_URL=${{ vars.UAT_API_URL }} \
             --scope ${{ secrets.VERCEL_ORG_ID }} \
-            --yes
+            --prod --yes
         env:
           VERCEL_PROJECT_ID: ${{ secrets.VERCEL_ADMIN_PROJECT_ID }}
           VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
@@ -187,6 +187,14 @@ jobs:
     steps:
       - name: Health check
         run: |
-          sleep 20
-          curl -f ${{ vars.UAT_API_URL }}/actuator/health || exit 1
-          echo "UAT smoke test passed"
+          echo "Waiting for backend to stabilise..."
+          for i in $(seq 1 10); do
+            if curl -sf ${{ vars.UAT_API_URL }}/actuator/health; then
+              echo "UAT smoke test passed"
+              exit 0
+            fi
+            echo "Attempt $i failed, retrying in 15s..."
+            sleep 15
+          done
+          echo "Backend failed to respond after 150s"
+          exit 1
