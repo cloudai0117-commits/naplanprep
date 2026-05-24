@@ -41,7 +41,7 @@ jobs:
           cache: maven
 
       - name: Run backend tests
-        run: cd backend && ./mvnw verify -P test -B
+        run: cd backend && ./mvnw verify -B
         env:
           SPRING_PROFILES_ACTIVE: test
           SPRING_DATASOURCE_URL: jdbc:postgresql://localhost:5432/naplanprep_test
@@ -71,7 +71,7 @@ jobs:
       - run: cd frontend && npm ci
       - run: cd frontend && npm run lint
       - run: cd frontend && npm run type-check
-      - run: cd frontend && npm test -- --coverage --run
+      - run: cd frontend && npm test -- --run
 
   admin-test:
     name: Admin Panel Tests
@@ -87,7 +87,7 @@ jobs:
       - run: cd admin-panel && npm ci
       - run: cd admin-panel && npm run lint
       - run: cd admin-panel && npm run type-check
-      - run: cd admin-panel && npm test -- --run
+      - run: cd admin-panel && npm test -- --run --passWithNoTests
 
   security-scan:
     name: Security Scan

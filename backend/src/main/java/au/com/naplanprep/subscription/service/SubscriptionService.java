@@ -14,11 +14,9 @@ import com.stripe.exception.SignatureVerificationException;
 import com.stripe.exception.StripeException;
 import com.stripe.model.Event;
 import com.stripe.model.checkout.Session;
-import com.stripe.model.billing_portal.Configuration;
 import com.stripe.net.Webhook;
 import com.stripe.param.CustomerCreateParams;
 import com.stripe.param.checkout.SessionCreateParams;
-import com.stripe.param.billing_portal.SessionCreateParams.Builder;
 import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -99,13 +97,13 @@ public class SubscriptionService {
         }
 
         try {
-            var params = com.stripe.param.billing_portal.SessionCreateParams.builder()
+            var params = com.stripe.param.billingportal.SessionCreateParams.builder()
                 .setCustomer(user.getStripeCustomerId())
                 .setReturnUrl(returnUrl != null ? returnUrl : appProperties.getFrontendUrl() + "/settings")
                 .build();
 
-            com.stripe.model.billing_portal.Session session =
-                com.stripe.model.billing_portal.Session.create(params);
+            com.stripe.model.billingportal.Session session =
+                com.stripe.model.billingportal.Session.create(params);
             return session.getUrl();
         } catch (StripeException e) {
             log.error("Stripe portal error", e);

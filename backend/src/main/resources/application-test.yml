@@ -1,0 +1,35 @@
+spring:
+  datasource:
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/naplanprep_test}
+    username: ${SPRING_DATASOURCE_USERNAME:testuser}
+    password: ${SPRING_DATASOURCE_PASSWORD:testpass}
+    driver-class-name: org.postgresql.Driver
+    hikari:
+      maximum-pool-size: 5
+  data:
+    redis:
+      host: ${SPRING_DATA_REDIS_HOST:localhost}
+      port: ${SPRING_DATA_REDIS_PORT:6379}
+  jpa:
+    show-sql: false
+
+app:
+  jwt:
+    access-token-expiry: 900
+    refresh-token-expiry: 604800
+  stripe:
+    secret-key: sk_test_dummy
+    webhook-secret: whsec_dummy
+    publishable-key: pk_test_dummy
+  cors:
+    allowed-origins:
+      - http://localhost:3000
+  frontend-url: http://localhost:3000
+  rate-limit:
+    auth-attempts: 5
+    auth-lockout-minutes: 15
+
+logging:
+  level:
+    root: WARN
+    au.com.naplanprep: INFO
