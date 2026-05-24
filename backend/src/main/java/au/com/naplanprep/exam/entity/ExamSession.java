@@ -57,6 +57,7 @@ public class ExamSession {
     private UUID examId;
 
     @CreationTimestamp
+    @Column(nullable = false, updatable = false)
     private Instant createdAt;
 
     public enum ExamType {
