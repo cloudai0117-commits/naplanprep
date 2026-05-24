@@ -20,7 +20,10 @@ apiClient.interceptors.response.use(
   (response) => response,
   async (error) => {
     const originalRequest = error.config
-    if (error.response?.status === 401 && !originalRequest._retry) {
+    // Skip token refresh for auth endpoints — a 401 from /auth/login is a bad-credentials
+    // error that must surface to the caller, not trigger a refresh cycle.
+    const isAuthEndpoint = originalRequest.url?.includes('/auth/')
+    if (error.response?.status === 401 && !originalRequest._retry && !isAuthEndpoint) {
       originalRequest._retry = true
       const refreshToken = useAuthStore.getState().refreshToken
       if (refreshToken) {

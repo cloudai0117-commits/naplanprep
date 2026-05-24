@@ -60,6 +60,7 @@ export default function LoginPage() {
                 {...register('email')}
                 type="email"
                 autoComplete="email"
+                required
                 className="input-field"
                 placeholder="you@example.com"
               />
