@@ -30,9 +30,12 @@ app:
     publishable-key: ${STRIPE_PUBLISHABLE_KEY}
   cors:
     allowed-origins:
+      - https://naplanprep.com.au
+      - https://www.naplanprep.com.au
+      - https://admin.naplanprep.com.au
       - https://uat.naplanprep.com.au
       - https://admin.uat.naplanprep.com.au
-  frontend-url: https://uat.naplanprep.com.au
+  frontend-url: https://naplanprep.com.au
   rate-limit:
     auth-attempts: 5
     auth-lockout-minutes: 15
