@@ -1,17 +1,14 @@
-CREATE TYPE exam_status AS ENUM ('DRAFT', 'PUBLISHED', 'ARCHIVED');
-CREATE TYPE package_tier AS ENUM ('FREE', 'STANDARD', 'PREMIUM', 'FAMILY');
-
 CREATE TABLE exams (
     id              UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     title           VARCHAR(200) NOT NULL,
     description     TEXT,
     year_level      INTEGER NOT NULL CHECK (year_level IN (3, 5, 7, 9)),
-    domain          domain_type NOT NULL,
-    package_tier    package_tier NOT NULL DEFAULT 'FREE',
+    domain          VARCHAR(50) NOT NULL,
+    package_tier    VARCHAR(50) NOT NULL DEFAULT 'FREE',
     time_limit_seconds INTEGER NOT NULL CHECK (time_limit_seconds > 0),
     available_from  TIMESTAMPTZ,
     available_until TIMESTAMPTZ,
-    status          exam_status NOT NULL DEFAULT 'DRAFT',
+    status          VARCHAR(50) NOT NULL DEFAULT 'DRAFT',
     created_by      UUID REFERENCES users(id) ON DELETE SET NULL,
     created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()

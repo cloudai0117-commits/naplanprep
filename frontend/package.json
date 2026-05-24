@@ -29,6 +29,9 @@
     "clsx": "^2.1.0",
     "date-fns": "^3.3.1"
   },
+  "overrides": {
+    "minimatch": "^9.0.7"
+  },
   "devDependencies": {
     "@types/node": "^20.11.5",
     "@types/react": "^18.2.48",

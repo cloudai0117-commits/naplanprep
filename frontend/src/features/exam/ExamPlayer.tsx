@@ -81,7 +81,7 @@ export default function ExamPlayer() {
     if (timer.remaining === 0 && session?.status === 'IN_PROGRESS') {
       submitExam()
     }
-  }, [timer.remaining])
+  }, [timer.remaining, session?.status, submitExam])
 
   if (sessionLoading || questionsLoading) {
     return (

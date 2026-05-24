@@ -1,12 +1,8 @@
-CREATE TYPE question_type AS ENUM ('MULTIPLE_CHOICE', 'DRAG_DROP', 'SHORT_ANSWER', 'EXTENDED_WRITING');
-CREATE TYPE domain_type AS ENUM ('READING', 'WRITING', 'SPELLING', 'GRAMMAR_PUNCTUATION', 'NUMERACY');
-CREATE TYPE question_status AS ENUM ('DRAFT', 'REVIEW', 'PUBLISHED', 'ARCHIVED');
-
 CREATE TABLE questions (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    question_type question_type NOT NULL,
+    question_type VARCHAR(50) NOT NULL,
     year_level INTEGER NOT NULL CHECK (year_level IN (3, 5, 7, 9)),
-    domain domain_type NOT NULL,
+    domain VARCHAR(50) NOT NULL,
     topic VARCHAR(200) NOT NULL,
     difficulty_band INTEGER NOT NULL CHECK (difficulty_band BETWEEN 1 AND 10),
     stimulus_text TEXT,
@@ -14,7 +10,7 @@ CREATE TABLE questions (
     options JSONB,
     correct_answer JSONB NOT NULL,
     explanation TEXT,
-    status question_status NOT NULL DEFAULT 'DRAFT',
+    status VARCHAR(50) NOT NULL DEFAULT 'DRAFT',
     created_by UUID REFERENCES users(id),
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()

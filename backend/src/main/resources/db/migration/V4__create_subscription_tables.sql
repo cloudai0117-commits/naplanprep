@@ -1,6 +1,3 @@
-CREATE TYPE subscription_status AS ENUM ('TRIALING', 'ACTIVE', 'PAST_DUE', 'CANCELLED', 'UNPAID');
-CREATE TYPE billing_interval AS ENUM ('MONTHLY', 'ANNUAL');
-
 CREATE TABLE plans (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     name VARCHAR(100) NOT NULL UNIQUE,
@@ -23,8 +20,8 @@ CREATE TABLE subscriptions (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     user_id UUID NOT NULL REFERENCES users(id),
     plan_id UUID NOT NULL REFERENCES plans(id),
-    status subscription_status NOT NULL DEFAULT 'ACTIVE',
-    billing_interval billing_interval NOT NULL DEFAULT 'MONTHLY',
+    status VARCHAR(50) NOT NULL DEFAULT 'ACTIVE',
+    billing_interval VARCHAR(50) NOT NULL DEFAULT 'MONTHLY',
     stripe_subscription_id VARCHAR(100) UNIQUE,
     current_period_start TIMESTAMPTZ,
     current_period_end TIMESTAMPTZ,

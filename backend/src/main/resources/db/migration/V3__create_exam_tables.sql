@@ -1,14 +1,11 @@
-CREATE TYPE exam_type AS ENUM ('PRACTICE', 'MOCK', 'DIAGNOSTIC');
-CREATE TYPE session_status AS ENUM ('IN_PROGRESS', 'SUBMITTED', 'TIMED_OUT', 'ABANDONED');
-
 CREATE TABLE exam_sessions (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     user_id UUID NOT NULL REFERENCES users(id),
-    exam_type exam_type NOT NULL,
+    exam_type VARCHAR(50) NOT NULL,
     year_level INTEGER NOT NULL,
-    domain domain_type,
+    domain VARCHAR(50),
     question_ids JSONB NOT NULL,
-    status session_status NOT NULL DEFAULT 'IN_PROGRESS',
+    status VARCHAR(50) NOT NULL DEFAULT 'IN_PROGRESS',
     started_at TIMESTAMPTZ,
     submitted_at TIMESTAMPTZ,
     expires_at TIMESTAMPTZ,
