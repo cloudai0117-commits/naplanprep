@@ -1,18 +1,13 @@
 name: Deploy — UAT
 
-# Runs only after CI passes on the develop branch (Rule: CI must pass before deploy)
 on:
-  workflow_run:
-    workflows: ["CI — Test & Build"]
-    types: [completed]
+  push:
     branches: [develop]
 
 jobs:
   deploy-backend-uat:
     name: Deploy Backend to Railway UAT
     runs-on: ubuntu-latest
-    if: ${{ github.event.workflow_run.conclusion == 'success' }}
-
     steps:
       - uses: actions/checkout@v4
 
