@@ -62,11 +62,13 @@ public class ProgressService {
 
         List<Map<String, Object>> trend = results.stream()
             .limit(10)
-            .map(r -> Map.of(
-                "date", r.getCalculatedAt().toString(),
-                "score", r.getScorePercentage(),
-                "band", r.getNaplanBand()
-            ))
+            .map(r -> {
+                Map<String, Object> m = new HashMap<>();
+                m.put("date", r.getCalculatedAt().toString());
+                m.put("score", r.getScorePercentage());
+                m.put("band", r.getNaplanBand());
+                return m;
+            })
             .collect(Collectors.toList());
         Collections.reverse(trend);
         overview.put("recentTrend", trend);
@@ -87,19 +89,19 @@ public class ProgressService {
             Object correct = result.getDomainBreakdown().get(correctKey);
             if (total != null && (int)total > 0) {
                 double score = correct != null ? ((int)correct * 100.0) / (int)total : 0;
-                history.add(Map.of(
-                    "date", result.getCalculatedAt().toString(),
-                    "score", score,
-                    "questionsAnswered", total
-                ));
+                Map<String, Object> entry = new HashMap<>();
+                entry.put("date", result.getCalculatedAt().toString());
+                entry.put("score", score);
+                entry.put("questionsAnswered", total);
+                history.add(entry);
             }
         }
 
-        return Map.of(
-            "domain", domain,
-            "history", history,
-            "questionsAnswered", history.stream().mapToInt(h -> (int)h.get("questionsAnswered")).sum()
-        );
+        Map<String, Object> result = new HashMap<>();
+        result.put("domain", domain);
+        result.put("history", history);
+        result.put("questionsAnswered", history.stream().mapToInt(h -> (int) h.get("questionsAnswered")).sum());
+        return result;
     }
 
     public List<Map<String, Object>> getRecommendations(UUID userId) {
@@ -128,12 +130,12 @@ public class ProgressService {
         return domainTotals.entrySet().stream()
             .map(e -> {
                 double score = e.getValue()[1] > 0 ? (e.getValue()[0] / e.getValue()[1]) * 100 : 0;
-                return Map.of(
-                    "domain", e.getKey(),
-                    "score", Math.round(score * 10.0) / 10.0,
-                    "questionsAnswered", (int) e.getValue()[1],
-                    "priority", score < 50 ? "HIGH" : score < 70 ? "MEDIUM" : "LOW"
-                );
+                Map<String, Object> rec = new HashMap<>();
+                rec.put("domain", e.getKey());
+                rec.put("score", Math.round(score * 10.0) / 10.0);
+                rec.put("questionsAnswered", (int) e.getValue()[1]);
+                rec.put("priority", score < 50 ? "HIGH" : score < 70 ? "MEDIUM" : "LOW");
+                return rec;
             })
             .sorted(Comparator.comparingDouble(m -> (double) m.get("score")))
             .limit(5)

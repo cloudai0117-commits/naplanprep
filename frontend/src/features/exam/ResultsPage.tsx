@@ -41,7 +41,7 @@ export default function ResultsPage() {
           const domain = key.replace('_total', '')
           const correct = (result.domainBreakdown[`${domain}_correct`] as number) || 0
           const score = (total as number) > 0 ? Math.round((correct / (total as number)) * 100) : 0
-          return { domain: domain.replace('_', ' '), score, correct, total }
+          return { domain: domain.replace('_', ' '), score, correct, total: total as number }
         })
     : []
 

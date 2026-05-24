@@ -119,14 +119,16 @@ public class AdminExamService {
         result.put("availableUntil", exam.getAvailableUntil());
         result.put("status", exam.getStatus());
         result.put("createdAt", exam.getCreatedAt());
-        result.put("questions", eqs.stream().map(eq -> Map.of(
-            "questionId", eq.getQuestion().getId(),
-            "questionOrder", eq.getQuestionOrder(),
-            "questionText", eq.getQuestion().getQuestionText(),
-            "topic", eq.getQuestion().getTopic(),
-            "domain", eq.getQuestion().getDomain(),
-            "difficultyBand", eq.getQuestion().getDifficultyBand()
-        )).toList());
+        result.put("questions", eqs.stream().map(eq -> {
+            Map<String, Object> q = new LinkedHashMap<>();
+            q.put("questionId", eq.getQuestion().getId());
+            q.put("questionOrder", eq.getQuestionOrder());
+            q.put("questionText", eq.getQuestion().getQuestionText());
+            q.put("topic", eq.getQuestion().getTopic());
+            q.put("domain", eq.getQuestion().getDomain());
+            q.put("difficultyBand", eq.getQuestion().getDifficultyBand());
+            return q;
+        }).toList());
         return result;
     }
 

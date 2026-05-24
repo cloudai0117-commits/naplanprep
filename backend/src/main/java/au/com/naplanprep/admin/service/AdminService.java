@@ -13,6 +13,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.UUID;
 
@@ -38,15 +39,15 @@ public class AdminService {
             au.com.naplanprep.content.entity.Question.QuestionStatus.DRAFT);
         var mrr = subscriptionRepository.calculateMRR();
 
-        return Map.of(
-            "totalUsers", totalUsers,
-            "activeSubscribers", activeSubscribers,
-            "trialUsers", trialUsers,
-            "mrr", mrr != null ? mrr : 0,
-            "publishedQuestions", publishedQuestions,
-            "draftQuestions", draftQuestions,
-            "totalExams", examSessionRepository.count()
-        );
+        Map<String, Object> dashboard = new LinkedHashMap<>();
+        dashboard.put("totalUsers", totalUsers);
+        dashboard.put("activeSubscribers", activeSubscribers);
+        dashboard.put("trialUsers", trialUsers);
+        dashboard.put("mrr", mrr != null ? mrr : 0);
+        dashboard.put("publishedQuestions", publishedQuestions);
+        dashboard.put("draftQuestions", draftQuestions);
+        dashboard.put("totalExams", examSessionRepository.count());
+        return dashboard;
     }
 
     public Page<User> getUsers(String search, Pageable pageable) {
@@ -78,25 +79,25 @@ public class AdminService {
         double churnRate = (active + cancelled) > 0
             ? (cancelled * 100.0) / (active + cancelled) : 0;
 
-        return Map.of(
-            "mrr", mrr != null ? mrr : 0,
-            "activeSubscriptions", active,
-            "cancelledSubscriptions", cancelled,
-            "pastDueSubscriptions", pastDue,
-            "churnRate", Math.round(churnRate * 10.0) / 10.0
-        );
+        Map<String, Object> analytics = new LinkedHashMap<>();
+        analytics.put("mrr", mrr != null ? mrr : 0);
+        analytics.put("activeSubscriptions", active);
+        analytics.put("cancelledSubscriptions", cancelled);
+        analytics.put("pastDueSubscriptions", pastDue);
+        analytics.put("churnRate", Math.round(churnRate * 10.0) / 10.0);
+        return analytics;
     }
 
     public Map<String, Object> getContentStats() {
         var breakdown = questionRepository.countPublishedByYearLevelAndDomain();
-        return Map.of(
-            "breakdown", breakdown,
-            "totalPublished", questionRepository.countByStatus(
-                au.com.naplanprep.content.entity.Question.QuestionStatus.PUBLISHED),
-            "totalDraft", questionRepository.countByStatus(
-                au.com.naplanprep.content.entity.Question.QuestionStatus.DRAFT),
-            "totalReview", questionRepository.countByStatus(
-                au.com.naplanprep.content.entity.Question.QuestionStatus.REVIEW)
-        );
+        Map<String, Object> stats = new LinkedHashMap<>();
+        stats.put("breakdown", breakdown);
+        stats.put("totalPublished", questionRepository.countByStatus(
+            au.com.naplanprep.content.entity.Question.QuestionStatus.PUBLISHED));
+        stats.put("totalDraft", questionRepository.countByStatus(
+            au.com.naplanprep.content.entity.Question.QuestionStatus.DRAFT));
+        stats.put("totalReview", questionRepository.countByStatus(
+            au.com.naplanprep.content.entity.Question.QuestionStatus.REVIEW));
+        return stats;
     }
 }
