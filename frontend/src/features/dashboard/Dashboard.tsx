@@ -189,9 +189,12 @@ export default function Dashboard() {
             {availableExams.map((exam: any) => {
               const isAvailable = exam.availability === 'AVAILABLE'
               const isCompleted = exam.alreadyAttempted
+              const isLocked = exam.availability === 'UPGRADE_REQUIRED'
               return (
                 <div
                   key={exam.id}
+                  data-testid="available-exam-card"
+                  data-exam-id={exam.id}
                   className={`border rounded-lg p-4 transition-colors ${
                     isCompleted
                       ? 'border-green-200 bg-green-50'
@@ -216,8 +219,10 @@ export default function Dashboard() {
                     </span>
                     {isCompleted ? (
                       <span className="text-xs text-green-600 font-medium">Completed</span>
-                    ) : exam.availability === 'UPGRADE_REQUIRED' ? (
-                      <span className="text-xs text-yellow-600 font-medium">Upgrade required</span>
+                    ) : isLocked ? (
+                      <span data-testid="upgrade-prompt" className="text-xs text-yellow-600 font-medium flex items-center gap-1">
+                        <span data-testid="lock-icon">🔒</span> Upgrade required
+                      </span>
                     ) : exam.availability === 'UPCOMING' ? (
                       <span className="text-xs text-blue-600 font-medium">Coming soon</span>
                     ) : exam.availability === 'EXPIRED' ? (

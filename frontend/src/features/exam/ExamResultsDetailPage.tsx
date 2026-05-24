@@ -89,19 +89,19 @@ export default function ExamResultsDetailPage() {
               />
             </svg>
             <div className="absolute inset-0 flex flex-col items-center justify-center">
-              <span className="text-3xl font-bold text-gray-900">{Math.round(result.percentage)}%</span>
-              <span className="text-xs text-gray-500">{result.correctAnswers}/{result.totalQuestions}</span>
+              <span data-testid="percentage" className="text-3xl font-bold text-gray-900">{Math.round(result.percentage)}%</span>
+              <span data-testid="overall-score" className="text-xs text-gray-500">{result.correctAnswers}/{result.totalQuestions}</span>
             </div>
           </div>
         </div>
 
         <div className="grid grid-cols-3 gap-4">
           <div>
-            <div className={`text-2xl font-bold ${bandColor(result.band)}`}>{result.band}</div>
+            <div data-testid="naplan-band" className={`text-2xl font-bold ${bandColor(result.band)}`}>Band {result.band}</div>
             <div className="text-xs text-gray-500">NAPLAN Band</div>
           </div>
           <div>
-            <div className="text-2xl font-bold text-gray-900">{timeTakenLabel}</div>
+            <div data-testid="time-taken" className="text-2xl font-bold text-gray-900">{timeTakenLabel}</div>
             <div className="text-xs text-gray-500">Time Taken</div>
           </div>
           <div>
@@ -113,7 +113,7 @@ export default function ExamResultsDetailPage() {
 
       {/* Topic breakdown */}
       {radarData.length > 0 && (
-        <div className="card">
+        <div data-testid="topic-breakdown" className="card">
           <h2 className="text-lg font-semibold text-gray-900 mb-4">Performance by Topic</h2>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-center">
             <ResponsiveContainer width="100%" height={220}>
@@ -150,7 +150,7 @@ export default function ExamResultsDetailPage() {
       {/* Question review */}
       <div className="card">
         <h2 className="text-lg font-semibold text-gray-900 mb-4">Question Review</h2>
-        <div className="space-y-4">
+        <div data-testid="question-review-list" className="space-y-4">
           {(result.questions || []).map((q: any) => (
             <div
               key={q.questionId}

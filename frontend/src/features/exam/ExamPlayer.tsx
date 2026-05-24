@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation } from '@tanstack/react-query'
 import apiClient from '@/api/client'
@@ -29,6 +29,7 @@ export default function ExamPlayer() {
   const [answers, setAnswers] = useState<Record<string, string>>({})
   const [flagged, setFlagged] = useState<Record<string, boolean>>({})
   const [showSubmitModal, setShowSubmitModal] = useState(false)
+  const hasTimerStarted = useRef(false)
 
   const { data: session, isLoading: sessionLoading } = useQuery({
     queryKey: ['exam-session', sessionId],
@@ -112,14 +113,14 @@ export default function ExamPlayer() {
         <div className="flex items-center space-x-4">
           <div>
             {session?.examTitle && (
-              <div className="text-xs text-gray-500 font-medium">{session.examTitle}</div>
+              <div data-testid="exam-title" className="text-xs text-gray-500 font-medium">{session.examTitle}</div>
             )}
-            <span className="font-semibold text-gray-800">
+            <span data-testid="question-counter" className="font-semibold text-gray-800">
               Question {currentIdx + 1} of {questions.length}
             </span>
           </div>
           <div className="hidden md:flex items-center text-sm text-gray-600">
-            <span className="w-24 bg-gray-200 rounded-full h-2 mr-2">
+            <span data-testid="progress-bar" className="w-24 bg-gray-200 rounded-full h-2 mr-2">
               <div
                 className="bg-primary-500 h-2 rounded-full transition-all"
                 style={{ width: `${progress}%` }}
@@ -129,7 +130,7 @@ export default function ExamPlayer() {
           </div>
         </div>
         <div className={`font-mono text-lg font-bold ${timer.remaining < 300 ? 'text-red-600' : 'text-gray-800'}`}>
-          ⏱ {timer.label}
+          ⏱ <span data-testid="exam-timer">{timer.label}</span>
         </div>
         <button
           onClick={() => setShowSubmitModal(true)}
@@ -151,7 +152,7 @@ export default function ExamPlayer() {
               )}
               <div>
                 <div className="flex items-start justify-between mb-4">
-                  <h2 className="text-lg font-medium text-gray-900 leading-relaxed">
+                  <h2 data-testid="question-text" className="text-lg font-medium text-gray-900 leading-relaxed">
                     {currentQuestion.questionText}
                   </h2>
                   <button
@@ -168,9 +169,11 @@ export default function ExamPlayer() {
                     {currentQuestion.options.options.map((opt: string) => (
                       <label
                         key={opt}
+                        data-testid="answer-option"
+                        aria-checked={answers[currentQuestionId] === opt}
                         className={`flex items-center p-4 border rounded-lg cursor-pointer transition-colors ${
                           answers[currentQuestionId] === opt
-                            ? 'border-primary-500 bg-primary-50'
+                            ? 'border-primary-500 bg-primary-50 selected'
                             : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
                         }`}
                       >
@@ -202,7 +205,7 @@ export default function ExamPlayer() {
         </div>
 
         {/* Question nav sidebar */}
-        <div className="w-48 border-l border-gray-200 bg-white p-4 overflow-y-auto hidden lg:block">
+        <div data-testid="question-nav-panel" className="w-48 border-l border-gray-200 bg-white p-4 overflow-y-auto hidden lg:block">
           <div className="text-xs font-semibold text-gray-500 uppercase mb-3">Questions</div>
           <div className="grid grid-cols-4 gap-1.5">
             {questions.map((q: any, idx: number) => (
@@ -279,11 +282,12 @@ export default function ExamPlayer() {
                 Keep going
               </button>
               <button
+                data-testid="confirm-submit-btn"
                 onClick={() => submitExam()}
                 disabled={submitting}
                 className="btn-primary flex-1"
               >
-                {submitting ? 'Submitting...' : 'Submit'}
+                {submitting ? 'Submitting...' : 'Confirm Submit'}
               </button>
             </div>
           </div>
