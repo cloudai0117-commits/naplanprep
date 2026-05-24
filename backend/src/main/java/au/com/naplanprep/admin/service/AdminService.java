@@ -67,6 +67,35 @@ public class AdminService {
         return userRepository.save(user);
     }
 
+    public Page<Map<String, Object>> getSubscriptionList(Pageable pageable) {
+        return subscriptionRepository.findAllByOrderByCreatedAtDesc(pageable).map(sub -> {
+            Map<String, Object> dto = new LinkedHashMap<>();
+            dto.put("id", sub.getId());
+            dto.put("userId", sub.getUserId());
+            dto.put("planName", sub.getPlan().getName());
+            dto.put("planSlug", sub.getPlan().getSlug());
+            dto.put("status", sub.getStatus());
+            dto.put("billingInterval", sub.getBillingInterval());
+            dto.put("monthlyPrice", sub.getPlan().getMonthlyPrice());
+            dto.put("annualPrice", sub.getPlan().getAnnualPrice());
+            dto.put("stripeSubscriptionId", sub.getStripeSubscriptionId());
+            dto.put("currentPeriodEnd", sub.getCurrentPeriodEnd());
+            dto.put("trialEnd", sub.getTrialEnd());
+            dto.put("cancelledAt", sub.getCancelledAt());
+            dto.put("createdAt", sub.getCreatedAt());
+            userRepository.findByIdWithProfile(sub.getUserId()).ifPresent(user -> {
+                dto.put("userEmail", user.getEmail());
+                var profile = user.getProfile();
+                if (profile != null) {
+                    String name = (profile.getFirstName() != null ? profile.getFirstName() : "") +
+                                  (profile.getLastName() != null ? " " + profile.getLastName() : "");
+                    dto.put("userName", name.trim());
+                }
+            });
+            return dto;
+        });
+    }
+
     public Map<String, Object> getSubscriptionAnalytics() {
         var mrr = subscriptionRepository.calculateMRR();
         long active = subscriptionRepository.countByStatus(

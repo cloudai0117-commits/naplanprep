@@ -50,6 +50,13 @@ public class AdminController {
         return ResponseEntity.ok(ApiResponse.success(adminService.updateUserStatus(id, newStatus)));
     }
 
+    @GetMapping("/subscriptions")
+    public ResponseEntity<ApiResponse<Page<Map<String, Object>>>> getSubscriptions(
+        @PageableDefault(size = 20) Pageable pageable
+    ) {
+        return ResponseEntity.ok(ApiResponse.success(adminService.getSubscriptionList(pageable)));
+    }
+
     @GetMapping("/subscriptions/analytics")
     public ResponseEntity<ApiResponse<Map<String, Object>>> getSubscriptionAnalytics() {
         return ResponseEntity.ok(ApiResponse.success(adminService.getSubscriptionAnalytics()));
