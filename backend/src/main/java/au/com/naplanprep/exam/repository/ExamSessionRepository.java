@@ -4,7 +4,6 @@ import au.com.naplanprep.exam.entity.ExamSession;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
-import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
@@ -31,9 +30,7 @@ public interface ExamSessionRepository extends JpaRepository<ExamSession, UUID> 
     boolean existsByUserIdAndExamIdAndStatus(
         UUID userId, UUID examId, ExamSession.SessionStatus status);
 
-    @Modifying
-    @Query("DELETE FROM ExamSession s WHERE s.userId IN :userIds")
-    int deleteByUserIdIn(@Param("userIds") List<UUID> userIds);
+    List<ExamSession> findByUserId(UUID userId);
 
     @Query("SELECT es FROM ExamSession es WHERE es.userId = :userId AND es.status IN :statuses ORDER BY es.createdAt DESC")
     Page<ExamSession> findByUserIdAndStatusIn(

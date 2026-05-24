@@ -23,7 +23,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.*;
-import java.util.Objects;
 
 @Slf4j
 @Service
@@ -212,17 +211,23 @@ public class AdminExamService {
         List<String> testEmails = List.of(
             "student1@test.com", "student2@test.com", "parent1@test.com"
         );
-        List<UUID> userIds = testEmails.stream()
-            .map(email -> userRepository.findByEmail(email).map(au.com.naplanprep.auth.entity.User::getId).orElse(null))
-            .filter(Objects::nonNull)
-            .toList();
-        if (userIds.isEmpty()) {
-            return Map.of("sessions", 0, "results", 0);
+        int resultCount = 0;
+        int sessionCount = 0;
+        for (String email : testEmails) {
+            var userOpt = userRepository.findByEmail(email);
+            if (userOpt.isEmpty()) continue;
+            UUID uid = userOpt.get().getId();
+            // Delete results first (no DB CASCADE from exam_sessions to exam_results)
+            List<au.com.naplanprep.exam.entity.ExamResult> results =
+                resultRepository.findByUserIdOrderByCalculatedAtDesc(uid);
+            resultCount += results.size();
+            resultRepository.deleteAll(results);
+            // Delete sessions (exam_answers cascade automatically via DB constraint)
+            List<ExamSession> sessions = sessionRepository.findByUserId(uid);
+            sessionCount += sessions.size();
+            sessionRepository.deleteAll(sessions);
         }
-        int results = resultRepository.deleteByUserIdIn(userIds);
-        int sessions = sessionRepository.deleteByUserIdIn(userIds);
-        log.info("Test data reset: deleted {} results, {} sessions for {} users",
-            results, sessions, userIds.size());
-        return Map.of("sessions", sessions, "results", results);
+        log.info("Test data reset: deleted {} results, {} sessions", resultCount, sessionCount);
+        return Map.of("sessions", sessionCount, "results", resultCount);
     }
 }
