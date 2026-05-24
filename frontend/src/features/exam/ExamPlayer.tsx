@@ -78,8 +78,16 @@ export default function ExamPlayer() {
     setFlagged((prev) => ({ ...prev, [questionId]: !prev[questionId] }))
   }
 
+  // Track when the timer has actually started counting (i.e., had a positive value).
+  // Prevents auto-submit firing on initial render when remaining is 0 by default.
   useEffect(() => {
-    if (timer.remaining === 0 && session?.status === 'IN_PROGRESS') {
+    if (timer.remaining > 0) {
+      hasTimerStarted.current = true
+    }
+  }, [timer.remaining])
+
+  useEffect(() => {
+    if (timer.remaining === 0 && hasTimerStarted.current && session?.status === 'IN_PROGRESS') {
       submitExam()
     }
   }, [timer.remaining, session?.status, submitExam])
