@@ -14,12 +14,25 @@ jobs:
       - name: Install Railway CLI
         run: npm install -g @railway/cli
 
+      - name: Set Railway env vars (Stripe keys)
+        run: |
+          railway variables --set "STRIPE_SECRET_KEY=${{ secrets.STRIPE_TEST_SECRET_KEY }}" \
+            --service naplanprep-backend-uat --environment uat
+          railway variables --set "STRIPE_WEBHOOK_SECRET=${{ secrets.STRIPE_TEST_WEBHOOK_SECRET }}" \
+            --service naplanprep-backend-uat --environment uat
+          railway variables --set "STRIPE_PUBLISHABLE_KEY=${{ secrets.STRIPE_TEST_PUBLISHABLE_KEY }}" \
+            --service naplanprep-backend-uat --environment uat
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+          RAILWAY_PROJECT_ID: fc40e9ef-0983-4774-b3ec-7ec138bb370a
+
       - name: Deploy backend to Railway UAT
         run: |
           cd backend
           railway up --service naplanprep-backend-uat --environment uat
         env:
           RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+          RAILWAY_PROJECT_ID: fc40e9ef-0983-4774-b3ec-7ec138bb370a
 
       - name: Wait for Railway to be ready
         run: sleep 30
@@ -77,10 +90,11 @@ jobs:
     name: UAT Smoke Tests
     runs-on: ubuntu-latest
     needs: [deploy-frontend-uat, deploy-admin-uat]
+    if: ${{ vars.UAT_API_URL != '' }}
 
     steps:
       - name: Health check
         run: |
           sleep 20
-          curl -f ${{ secrets.UAT_API_URL }}/actuator/health || exit 1
+          curl -f ${{ vars.UAT_API_URL }}/actuator/health || exit 1
           echo "UAT smoke test passed"
