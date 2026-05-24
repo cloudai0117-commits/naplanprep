@@ -3,6 +3,7 @@ package au.com.naplanprep.exam.service;
 import au.com.naplanprep.common.exception.BusinessException;
 import au.com.naplanprep.common.exception.ResourceNotFoundException;
 import au.com.naplanprep.content.entity.Question;
+import au.com.naplanprep.auth.repository.UserRepository;
 import au.com.naplanprep.content.repository.QuestionRepository;
 import au.com.naplanprep.exam.dto.*;
 import au.com.naplanprep.exam.entity.Exam;
@@ -22,6 +23,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.*;
+import java.util.Objects;
 
 @Slf4j
 @Service
@@ -34,6 +36,7 @@ public class AdminExamService {
     private final ExamAnswerRepository answerRepository;
     private final ExamResultRepository resultRepository;
     private final QuestionRepository questionRepository;
+    private final UserRepository userRepository;
 
     @Transactional
     public Exam createExam(CreateExamRequest req, UUID adminId) {
@@ -200,5 +203,26 @@ public class AdminExamService {
             throw new BusinessException(
                 "Cannot transition exam from " + current + " to " + next);
         }
+    }
+
+    /** Deletes all exam sessions and results for predefined UAT test accounts.
+     *  Allows repeated test runs without redeploying a new Flyway migration. */
+    @Transactional
+    public Map<String, Integer> resetTestUserSessions() {
+        List<String> testEmails = List.of(
+            "student1@test.com", "student2@test.com", "parent1@test.com"
+        );
+        List<UUID> userIds = testEmails.stream()
+            .map(email -> userRepository.findByEmail(email).map(au.com.naplanprep.auth.entity.User::getId).orElse(null))
+            .filter(Objects::nonNull)
+            .toList();
+        if (userIds.isEmpty()) {
+            return Map.of("sessions", 0, "results", 0);
+        }
+        int results = resultRepository.deleteByUserIdIn(userIds);
+        int sessions = sessionRepository.deleteByUserIdIn(userIds);
+        log.info("Test data reset: deleted {} results, {} sessions for {} users",
+            results, sessions, userIds.size());
+        return Map.of("sessions", sessions, "results", results);
     }
 }

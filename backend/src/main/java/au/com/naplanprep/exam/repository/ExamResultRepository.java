@@ -4,6 +4,7 @@ import au.com.naplanprep.exam.entity.ExamResult;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
@@ -21,4 +22,8 @@ public interface ExamResultRepository extends JpaRepository<ExamResult, UUID> {
 
     @Query("SELECT COUNT(r) FROM ExamResult r WHERE r.userId = :userId")
     long countByUserId(@Param("userId") UUID userId);
+
+    @Modifying
+    @Query("DELETE FROM ExamResult r WHERE r.userId IN :userIds")
+    int deleteByUserIdIn(@Param("userIds") List<UUID> userIds);
 }

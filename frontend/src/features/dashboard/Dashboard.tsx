@@ -193,7 +193,7 @@ export default function Dashboard() {
               return (
                 <div
                   key={exam.id}
-                  data-testid={isAvailable ? 'available-exam-card' : 'exam-card'}
+                  data-testid={isAvailable && !isCompleted ? 'available-exam-card' : 'exam-card'}
                   data-exam-id={exam.id}
                   className={`border rounded-lg p-4 transition-colors ${
                     isCompleted

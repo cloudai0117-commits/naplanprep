@@ -88,6 +88,12 @@ public class AdminExamController {
         return ResponseEntity.ok(ApiResponse.success(null));
     }
 
+    /** Resets exam sessions and results for UAT test accounts so tests can be run repeatedly. */
+    @DeleteMapping("/test-data/reset")
+    public ResponseEntity<ApiResponse<Map<String, Integer>>> resetTestData() {
+        return ResponseEntity.ok(ApiResponse.success(adminExamService.resetTestUserSessions()));
+    }
+
     @GetMapping("/{id}/results")
     public ResponseEntity<ApiResponse<Page<Map<String, Object>>>> getExamResults(
         @PathVariable UUID id,
