@@ -187,9 +187,11 @@ jobs:
     steps:
       - name: Health check
         run: |
-          echo "Waiting for backend to stabilise..."
+          HEALTH_URL="${{ vars.UAT_API_URL }}"
+          HEALTH_URL="${HEALTH_URL%/v1}/actuator/health"
+          echo "Checking $HEALTH_URL"
           for i in $(seq 1 10); do
-            if curl -sf ${{ vars.UAT_API_URL }}/actuator/health; then
+            if curl -sf "$HEALTH_URL"; then
               echo "UAT smoke test passed"
               exit 0
             fi
