@@ -114,8 +114,8 @@ jobs:
 
       - name: Wait for Railway deployment
         run: |
-          echo "Waiting 90s for Railway to pull and start the container..."
-          sleep 90
+          echo "Waiting 180s for Railway to pull and start the container..."
+          sleep 180
 
       - name: Get Railway service domain
         id: domain
