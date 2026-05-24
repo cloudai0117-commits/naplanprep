@@ -5,7 +5,7 @@ CREATE TABLE exams (
     id              UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     title           VARCHAR(200) NOT NULL,
     description     TEXT,
-    year_level      SMALLINT NOT NULL CHECK (year_level IN (3, 5, 7, 9)),
+    year_level      INTEGER NOT NULL CHECK (year_level IN (3, 5, 7, 9)),
     domain          domain_type NOT NULL,
     package_tier    package_tier NOT NULL DEFAULT 'FREE',
     time_limit_seconds INTEGER NOT NULL CHECK (time_limit_seconds > 0),
