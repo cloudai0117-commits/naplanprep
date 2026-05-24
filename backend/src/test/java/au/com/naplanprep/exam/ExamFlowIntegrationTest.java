@@ -1,5 +1,7 @@
 package au.com.naplanprep.exam;
 
+import au.com.naplanprep.auth.entity.User;
+import au.com.naplanprep.auth.repository.UserRepository;
 import au.com.naplanprep.content.entity.Question;
 import au.com.naplanprep.content.repository.QuestionRepository;
 import au.com.naplanprep.exam.dto.ExamResultDetailResponse;
@@ -43,6 +45,7 @@ class ExamFlowIntegrationTest {
     @Autowired private ExamSessionRepository sessionRepository;
     @Autowired private ExamAnswerRepository answerRepository;
     @Autowired private QuestionRepository questionRepository;
+    @Autowired private UserRepository userRepository;
 
     private UUID userId;
     private Exam exam;
@@ -50,7 +53,13 @@ class ExamFlowIntegrationTest {
 
     @BeforeEach
     void setUp() {
-        userId = UUID.randomUUID();
+        User user = new User();
+        user.setEmail("test-" + UUID.randomUUID() + "@example.com");
+        user.setPassword("hashed-password");
+        user.setRole(User.Role.STUDENT);
+        user.setStatus(User.UserStatus.ACTIVE);
+        user = userRepository.save(user);
+        userId = user.getId();
 
         question = new Question();
         question.setQuestionText("What is 3 × 4?");
