@@ -16,6 +16,7 @@ import ExamResultsDetailPage from '@/features/exam/ExamResultsDetailPage'
 import PricingPage from '@/features/subscription/PricingPage'
 import ParentDashboard from '@/features/parent/ParentDashboard'
 import ProfileSettings from '@/features/profile/ProfileSettings'
+import SchoolsPage from '@/features/admin/SchoolsPage'
 
 function App() {
   const { isAuthenticated } = useAuthStore()
@@ -45,6 +46,7 @@ function App() {
             <Route path="/pricing" element={<PricingPage />} />
             <Route path="/parent" element={<ParentDashboard />} />
             <Route path="/settings" element={<ProfileSettings />} />
+            <Route path="/admin/schools" element={<SchoolsPage />} />
           </Route>
         </Route>
 

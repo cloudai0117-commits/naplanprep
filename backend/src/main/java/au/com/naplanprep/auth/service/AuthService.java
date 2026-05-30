@@ -49,6 +49,7 @@ public class AuthService {
             .firstName(req.firstName())
             .lastName(req.lastName())
             .yearLevel(req.yearLevel())
+            .school(req.school())
             .build();
 
         user.setProfile(profile);

@@ -2,7 +2,8 @@ import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { Link, useNavigate } from 'react-router-dom'
-import { useMutation } from '@tanstack/react-query'
+import { useMutation, useQuery } from '@tanstack/react-query'
+import { useState, useRef, useEffect } from 'react'
 import apiClient from '@/api/client'
 import { useAuthStore } from '@/store/authStore'
 
@@ -14,8 +15,8 @@ const schema = z.object({
     .string()
     .min(8, 'Password must be at least 8 characters')
     .regex(/(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/, 'Must contain uppercase, lowercase, and a number'),
-  role: z.enum(['STUDENT', 'PARENT']),
   yearLevel: z.coerce.number().optional(),
+  school: z.string().optional(),
 })
 
 type FormData = z.infer<typeof schema>
@@ -23,16 +24,34 @@ type FormData = z.infer<typeof schema>
 export default function RegisterPage() {
   const navigate = useNavigate()
   const setAuth = useAuthStore((s) => s.setAuth)
+  const [schoolSearch, setSchoolSearch] = useState('')
+  const [showDropdown, setShowDropdown] = useState(false)
+  const [selectedSchool, setSelectedSchool] = useState('')
+  const dropdownRef = useRef<HTMLDivElement>(null)
 
-  const { register, handleSubmit, watch, formState: { errors } } = useForm<FormData>({
+  const { register, handleSubmit, setValue, formState: { errors } } = useForm<FormData>({
     resolver: zodResolver(schema),
-    defaultValues: { role: 'STUDENT' },
   })
 
-  const role = watch('role')
+  const { data: schoolsData } = useQuery({
+    queryKey: ['schools', schoolSearch],
+    queryFn: () => apiClient.get(`/schools${schoolSearch ? `?search=${encodeURIComponent(schoolSearch)}` : ''}`).then((r) => r.data.data),
+  })
+
+  const schools: { id: string; name: string; state: string }[] = schoolsData || []
+
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+        setShowDropdown(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [])
 
   const { mutate, isPending, error } = useMutation({
-    mutationFn: (data: FormData) => apiClient.post('/auth/register', data),
+    mutationFn: (data: FormData) => apiClient.post('/auth/register', { ...data, role: 'STUDENT' }),
     onSuccess: (res) => {
       const { accessToken, refreshToken, user } = res.data.data
       setAuth(user, accessToken, refreshToken)
@@ -78,7 +97,7 @@ export default function RegisterPage() {
 
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Email *</label>
-              <input {...register('email')} type="email" className="input-field" placeholder="jane@example.com" />
+              <input {...register('email')} type="email" required className="input-field" placeholder="jane@example.com" />
               {errors.email && <p className="mt-1 text-xs text-red-600">{errors.email.message}</p>}
             </div>
 
@@ -89,33 +108,50 @@ export default function RegisterPage() {
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">I am a</label>
-              <div className="grid grid-cols-2 gap-3">
-                {(['STUDENT', 'PARENT'] as const).map((r) => (
-                  <label
-                    key={r}
-                    className={`flex items-center justify-center p-3 border rounded-lg cursor-pointer transition-colors ${
-                      role === r ? 'border-primary-500 bg-primary-50 text-primary-700' : 'border-gray-300'
-                    }`}
-                  >
-                    <input {...register('role')} type="radio" value={r} className="sr-only" />
-                    <span className="font-medium text-sm">{r === 'STUDENT' ? '🎓 Student' : '👨‍👩‍👧 Parent'}</span>
-                  </label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Year Level</label>
+              <select {...register('yearLevel')} className="input-field">
+                <option value="">Select year level</option>
+                {[3, 5, 7, 9].map((y) => (
+                  <option key={y} value={y}>Year {y}</option>
                 ))}
-              </div>
+              </select>
             </div>
 
-            {role === 'STUDENT' && (
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Year Level</label>
-                <select {...register('yearLevel')} className="input-field">
-                  <option value="">Select year level</option>
-                  {[3, 5, 7, 9].map((y) => (
-                    <option key={y} value={y}>Year {y}</option>
+            <div ref={dropdownRef}>
+              <label className="block text-sm font-medium text-gray-700 mb-1">School</label>
+              <input
+                type="text"
+                className="input-field"
+                placeholder="Search for your school..."
+                value={selectedSchool || schoolSearch}
+                onFocus={() => setShowDropdown(true)}
+                onChange={(e) => {
+                  setSelectedSchool('')
+                  setValue('school', '')
+                  setSchoolSearch(e.target.value)
+                  setShowDropdown(true)
+                }}
+              />
+              {showDropdown && schools.length > 0 && (
+                <ul className="absolute z-10 mt-1 w-full max-w-sm bg-white border border-gray-200 rounded-lg shadow-lg max-h-48 overflow-y-auto text-sm">
+                  {schools.map((s) => (
+                    <li
+                      key={s.id}
+                      className="px-3 py-2 hover:bg-primary-50 cursor-pointer flex items-center justify-between"
+                      onMouseDown={() => {
+                        setSelectedSchool(s.name)
+                        setValue('school', s.name)
+                        setSchoolSearch('')
+                        setShowDropdown(false)
+                      }}
+                    >
+                      <span>{s.name}</span>
+                      <span className="text-xs text-gray-400">{s.state}</span>
+                    </li>
                   ))}
-                </select>
-              </div>
-            )}
+                </ul>
+              )}
+            </div>
 
             <button type="submit" disabled={isPending} className="btn-primary w-full py-3">
               {isPending ? 'Creating account...' : 'Create account'}

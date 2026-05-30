@@ -46,16 +46,16 @@ export default function Layout() {
                     {item.label}
                   </Link>
                 ))}
-                {user?.role === 'PARENT' && (
+                {user?.role === 'PLATFORM_ADMIN' && (
                   <Link
-                    to="/parent"
+                    to="/admin/schools"
                     className={`px-3 py-2 rounded-md text-sm font-medium transition-colors ${
-                      location.pathname === '/parent'
+                      location.pathname.startsWith('/admin')
                         ? 'bg-primary-50 text-primary-700'
                         : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
                     }`}
                   >
-                    Children
+                    Admin
                   </Link>
                 )}
               </div>

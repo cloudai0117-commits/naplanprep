@@ -21,13 +21,13 @@ public record RegisterRequest(
         message = "Password must contain uppercase, lowercase and a number")
     String password,
 
-    User.Role role,
-
     @Min(value = 3, message = "Year level must be 3, 5, 7, or 9")
     @Max(value = 9, message = "Year level must be 3, 5, 7, or 9")
-    Integer yearLevel
+    Integer yearLevel,
+
+    String school
 ) {
     public User.Role resolvedRole() {
-        return role != null ? role : User.Role.STUDENT;
+        return User.Role.STUDENT;
     }
 }

@@ -82,14 +82,20 @@ export default function ExamResultsDetailPage() {
               <circle
                 cx="72" cy="72" r="60"
                 fill="none"
-                stroke={result.percentage >= 80 ? '#10b981' : result.percentage >= 60 ? '#3b82f6' : '#f59e0b'}
+                stroke={
+                  result.percentage != null && !isNaN(result.percentage)
+                    ? result.percentage >= 80 ? '#10b981' : result.percentage >= 60 ? '#3b82f6' : '#f59e0b'
+                    : '#e5e7eb'
+                }
                 strokeWidth="12"
-                strokeDasharray={`${(result.percentage / 100) * 376.99} 376.99`}
+                strokeDasharray={`${((result.percentage ?? 0) / 100) * 376.99} 376.99`}
                 strokeLinecap="round"
               />
             </svg>
             <div className="absolute inset-0 flex flex-col items-center justify-center">
-              <span data-testid="percentage" className="text-3xl font-bold text-gray-900">{Math.round(result.percentage)}%</span>
+              <span data-testid="percentage" className="text-3xl font-bold text-gray-900">
+                {result.percentage != null && !isNaN(result.percentage) ? `${Math.round(result.percentage)}%` : '—'}
+              </span>
               <span data-testid="overall-score" className="text-xs text-gray-500">{result.correctAnswers}/{result.totalQuestions}</span>
             </div>
           </div>

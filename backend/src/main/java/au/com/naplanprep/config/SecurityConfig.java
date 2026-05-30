@@ -39,6 +39,7 @@ public class SecurityConfig {
             .authorizeHttpRequests(auth -> auth
                 .requestMatchers(HttpMethod.POST, "/v1/auth/register", "/v1/auth/login",
                     "/v1/auth/refresh", "/v1/subscriptions/webhooks/stripe").permitAll()
+                .requestMatchers(HttpMethod.GET, "/v1/subscriptions/plans", "/v1/schools").permitAll()
                 .requestMatchers("/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html",
                     "/actuator/health").permitAll()
                 .requestMatchers("/v1/admin/**").hasRole("PLATFORM_ADMIN")
