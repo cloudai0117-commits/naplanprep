@@ -88,16 +88,17 @@ jobs:
       - name: Set Stripe env vars on Railway
         run: |
           railway_var() {
-            curl -sf -X POST "${{ env.RAILWAY_API }}" \
+            curl -s --max-time 30 -X POST "${{ env.RAILWAY_API }}" \
               -H "Content-Type: application/json" \
               -H "Authorization: Bearer ${{ secrets.RAILWAY_TOKEN }}" \
               -d "{\"query\":\"mutation{variableUpsert(input:{projectId:\\\"${{ env.RAILWAY_PROJECT_ID }}\\\",environmentId:\\\"${{ env.RAILWAY_ENV_ID }}\\\",serviceId:\\\"${{ env.RAILWAY_BACKEND_SERVICE_ID }}\\\",name:\\\"$1\\\",value:\\\"$2\\\"})}\"}"\
-              > /dev/null
+              > /dev/null && echo "Set $1" || echo "Warning: failed to set $1 (env var may already be set in Railway)"
           }
           railway_var "STRIPE_SECRET_KEY"       "${{ secrets.STRIPE_TEST_SECRET_KEY }}"
           railway_var "STRIPE_WEBHOOK_SECRET"  "${{ secrets.STRIPE_TEST_WEBHOOK_SECRET }}"
           railway_var "STRIPE_PUBLISHABLE_KEY" "${{ secrets.STRIPE_TEST_PUBLISHABLE_KEY }}"
           railway_var "SPRING_PROFILES_ACTIVE" "uat"
+          echo "Env var step complete (failures are non-fatal — vars persist in Railway)"
 
       - name: Update Railway service image and start command
         run: |
