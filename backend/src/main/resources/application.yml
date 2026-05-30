@@ -42,3 +42,11 @@ springdoc:
   swagger-ui:
     path: /swagger-ui.html
     operationsSorter: method
+
+# Base CORS config — profile-specific files extend/override this list
+app:
+  cors:
+    allowed-origins:
+      - https://*.vercel.app
+      - http://localhost:5173
+      - http://localhost:5174

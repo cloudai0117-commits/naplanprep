@@ -18,7 +18,12 @@ public class CorsConfig {
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration config = new CorsConfiguration();
-        config.setAllowedOriginPatterns(appProperties.getCors().getAllowedOrigins());
+        List<String> origins = appProperties.getCors().getAllowedOrigins();
+        if (origins == null || origins.isEmpty()) {
+            // Fallback: allow all Vercel preview URLs + localhost when no profile config is loaded
+            origins = List.of("https://*.vercel.app", "http://localhost:5173", "http://localhost:5174");
+        }
+        config.setAllowedOriginPatterns(origins);
         config.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
         config.setAllowedHeaders(List.of("Authorization", "Content-Type", "X-Requested-With", "stripe-signature"));
         config.setExposedHeaders(List.of("Authorization"));
