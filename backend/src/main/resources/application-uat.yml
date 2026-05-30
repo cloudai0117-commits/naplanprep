@@ -1,4 +1,10 @@
 spring:
+  flyway:
+    validate-on-migrate: false
+    out-of-order: true
+  jpa:
+    hibernate:
+      ddl-auto: none
   datasource:
     # Railway injects DATABASE_URL (postgresql://user:pass@host:port/db) — use it directly if available,
     # otherwise fall back to individual DB_HOST/DB_PORT vars set manually in Railway dashboard
