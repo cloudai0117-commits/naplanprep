@@ -29,11 +29,19 @@ export default function PricingPage() {
     queryFn: () => apiClient.get('/subscriptions/current').then((r) => r.data.data),
   })
 
+  const [checkoutError, setCheckoutError] = useState<string | null>(null)
+
   const { mutate: checkout, isPending } = useMutation({
     mutationFn: (planSlug: string) =>
       apiClient.post('/subscriptions/checkout', { planSlug, interval }),
     onSuccess: (res) => {
-      window.location.href = res.data.data.checkoutUrl
+      setCheckoutError(null)
+      const url = res.data.data?.checkoutUrl
+      if (url) window.location.href = url
+      else setCheckoutError('No checkout URL returned. Please try again.')
+    },
+    onError: (err: any) => {
+      setCheckoutError(err?.response?.data?.errors?.[0] || 'Checkout failed. Stripe may not be configured in UAT.')
     },
   })
 
@@ -83,6 +91,8 @@ export default function PricingPage() {
           </div>
         </div>
       )}
+
+      {checkoutError && <div className="p-3 bg-red-50 border border-red-200 text-red-700 rounded-lg text-sm text-center">{checkoutError}</div>}
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         {plans?.map((plan) => {

@@ -52,15 +52,17 @@ export default function ResultsPage() {
         <div className="flex justify-center items-baseline space-x-4 my-6">
           <div className="text-center">
             <div className="text-6xl font-bold text-primary-600">
-              {Math.round(result.scorePercentage)}%
+              {result.scorePercentage != null && !isNaN(result.scorePercentage)
+                ? `${Math.round(result.scorePercentage)}%`
+                : '—'}
             </div>
             <div className="text-gray-500 text-sm mt-1">Overall Score</div>
           </div>
           <div className="text-center">
-            <div className={`text-5xl font-bold ${getBandColor(result.naplanBand)}`}>
-              Band {result.naplanBand}
+            <div className={`text-5xl font-bold ${getBandColor(result.naplanBand || 0)}`}>
+              {result.naplanBand ? `Band ${result.naplanBand}` : '—'}
             </div>
-            <div className="text-gray-500 text-sm mt-1">{getBandLabel(result.naplanBand)}</div>
+            <div className="text-gray-500 text-sm mt-1">{getBandLabel(result.naplanBand || 0)}</div>
           </div>
         </div>
         <div className="flex justify-center space-x-6 text-sm text-gray-600">

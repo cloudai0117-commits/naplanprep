@@ -84,8 +84,8 @@ export default function Dashboard() {
         {[
           { label: 'Total Exams', value: overview?.totalExams || 0, icon: '📝' },
           { label: 'Avg Score', value: `${overview?.averageScore || 0}%`, icon: '📊' },
-          { label: 'NAPLAN Band', value: overview?.lastNaplanBand || '—', icon: '🎯' },
-          { label: 'Streak', value: '—', icon: '🔥' },
+          { label: 'NAPLAN Band', value: overview?.lastNaplanBand != null ? `Band ${overview.lastNaplanBand}` : '—', icon: '🎯' },
+          { label: 'Streak', value: `${trendData.length > 0 ? trendData.length : 0} exams`, icon: '🔥' },
         ].map((stat) => (
           <div key={stat.label} className="card text-center">
             <div className="text-2xl mb-1">{stat.icon}</div>
