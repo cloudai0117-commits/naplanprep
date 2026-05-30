@@ -51,7 +51,7 @@ export default function ResultsPage() {
         <h1 className="text-3xl font-bold text-gray-900 mb-2">Exam Complete!</h1>
         <div className="flex justify-center items-baseline space-x-4 my-6">
           <div className="text-center">
-            <div className="text-6xl font-bold text-primary-600">
+            <div data-testid="percentage" className="text-6xl font-bold text-primary-600">
               {result.scorePercentage != null && !isNaN(result.scorePercentage)
                 ? `${Math.round(result.scorePercentage)}%`
                 : '—'}
@@ -59,14 +59,14 @@ export default function ResultsPage() {
             <div className="text-gray-500 text-sm mt-1">Overall Score</div>
           </div>
           <div className="text-center">
-            <div className={`text-5xl font-bold ${getBandColor(result.naplanBand || 0)}`}>
+            <div data-testid="naplan-band" className={`text-5xl font-bold ${getBandColor(result.naplanBand || 0)}`}>
               {result.naplanBand ? `Band ${result.naplanBand}` : '—'}
             </div>
             <div className="text-gray-500 text-sm mt-1">{getBandLabel(result.naplanBand || 0)}</div>
           </div>
         </div>
         <div className="flex justify-center space-x-6 text-sm text-gray-600">
-          <span>✅ {result.correctAnswers} correct</span>
+          <span data-testid="overall-score">✅ {result.correctAnswers}/{result.totalQuestions}</span>
           <span>❌ {result.totalQuestions - result.correctAnswers} incorrect</span>
           <span>📝 {result.totalQuestions} total</span>
         </div>
