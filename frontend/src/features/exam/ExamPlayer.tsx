@@ -30,6 +30,7 @@ export default function ExamPlayer() {
   const [flagged, setFlagged] = useState<Record<string, boolean>>({})
   const [showSubmitModal, setShowSubmitModal] = useState(false)
   const hasTimerStarted = useRef(false)
+  const [showBackWarning, setShowBackWarning] = useState(false)
 
   const { data: session, isLoading: sessionLoading } = useQuery({
     queryKey: ['exam-session', sessionId],
@@ -78,6 +79,32 @@ export default function ExamPlayer() {
     setFlagged((prev) => ({ ...prev, [questionId]: !prev[questionId] }))
   }
 
+  // Block browser back navigation during an active exam session
+  useEffect(() => {
+    if (!session || session.status !== 'IN_PROGRESS') return
+
+    // Push a dummy state so there's something to catch
+    window.history.pushState({ examActive: true }, '')
+
+    const handlePopState = (e: PopStateEvent) => {
+      // Re-push so the back button can't escape
+      window.history.pushState({ examActive: true }, '')
+      setShowBackWarning(true)
+    }
+
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      e.preventDefault()
+      e.returnValue = 'Your exam is in progress. Leaving will not submit your answers.'
+    }
+
+    window.addEventListener('popstate', handlePopState)
+    window.addEventListener('beforeunload', handleBeforeUnload)
+    return () => {
+      window.removeEventListener('popstate', handlePopState)
+      window.removeEventListener('beforeunload', handleBeforeUnload)
+    }
+  }, [session?.status])
+
   // Track when the timer has actually started counting (i.e., had a positive value).
   // Prevents auto-submit firing on initial render when remaining is 0 by default.
   useEffect(() => {
@@ -116,6 +143,24 @@ export default function ExamPlayer() {
 
   return (
     <div className="fixed inset-0 z-50 bg-gray-50 flex flex-col">
+      {/* Back-navigation warning modal */}
+      {showBackWarning && (
+        <div className="fixed inset-0 z-[60] bg-black/50 flex items-center justify-center">
+          <div className="bg-white rounded-xl shadow-xl p-6 max-w-sm mx-4 text-center">
+            <div className="text-4xl mb-3">⚠️</div>
+            <h2 className="text-lg font-bold text-gray-900 mb-2">Exam in Progress</h2>
+            <p className="text-gray-600 text-sm mb-4">
+              You cannot navigate away during an exam. Please submit your exam first.
+            </p>
+            <button
+              onClick={() => setShowBackWarning(false)}
+              className="btn-primary w-full"
+            >
+              Continue Exam
+            </button>
+          </div>
+        </div>
+      )}
       {/* Header */}
       <div className="bg-white border-b border-gray-200 px-4 py-3 flex items-center justify-between">
         <div className="flex items-center space-x-4">

@@ -7,6 +7,7 @@ import au.com.naplanprep.content.repository.QuestionRepository;
 import au.com.naplanprep.exam.dto.*;
 import au.com.naplanprep.exam.entity.*;
 import au.com.naplanprep.exam.repository.*;
+import au.com.naplanprep.auth.repository.UserRepository;
 import au.com.naplanprep.subscription.entity.Subscription;
 import au.com.naplanprep.subscription.repository.SubscriptionRepository;
 import lombok.RequiredArgsConstructor;
@@ -40,6 +41,7 @@ public class ExamService {
     private final ExamQuestionRepository examQuestionRepository;
     private final QuestionRepository questionRepository;
     private final SubscriptionRepository subscriptionRepository;
+    private final UserRepository userRepository;
 
     // ─────────────────────────────────────────────────────────────
     // Practice / ad-hoc sessions (existing flow)
@@ -91,7 +93,14 @@ public class ExamService {
         List<Exam> all = examRepository.findAllPublished();
         Instant now = Instant.now();
 
-        return all.stream().map(exam -> {
+        // Filter by student's year level (if set on their profile)
+        Integer userYearLevel = userRepository.findByIdWithProfile(userId)
+            .map(u -> u.getProfile() != null ? u.getProfile().getYearLevel() : null)
+            .orElse(null);
+
+        return all.stream()
+            .filter(exam -> userYearLevel == null || exam.getYearLevel() == null || exam.getYearLevel().equals(userYearLevel))
+            .map(exam -> {
             int qCount = examQuestionRepository.findByExamIdOrdered(exam.getId()).size();
             boolean attempted = sessionRepository.existsByUserIdAndExamIdAndStatus(
                 userId, exam.getId(), ExamSession.SessionStatus.SUBMITTED);
