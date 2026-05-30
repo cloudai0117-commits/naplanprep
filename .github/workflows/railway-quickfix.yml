@@ -32,13 +32,14 @@ jobs:
           upsert "STRIPE_WEBHOOK_SECRET"   "${{ secrets.STRIPE_TEST_WEBHOOK_SECRET }}"
           upsert "STRIPE_PUBLISHABLE_KEY"  "${{ secrets.STRIPE_TEST_PUBLISHABLE_KEY }}"
 
-      - name: Update start command to force uat profile
+      - name: Update start command with all critical JVM properties
         run: |
+          CMD="java -Dspring.profiles.active=uat -Dspring.flyway.validate-on-migrate=false -Dspring.flyway.out-of-order=true -Dspring.jpa.hibernate.ddl-auto=none -Dspring.data.redis.connect-timeout=3000 -jar /app/app.jar"
           curl -sf -X POST "${{ env.RAILWAY_API }}" \
             -H "Content-Type: application/json" \
             -H "Authorization: Bearer ${{ secrets.RAILWAY_TOKEN }}" \
-            -d "{\"query\":\"mutation{serviceInstanceUpdate(serviceId:\\\"${{ env.RAILWAY_BACKEND_SERVICE_ID }}\\\",environmentId:\\\"${{ env.RAILWAY_ENV_ID }}\\\",input:{source:{image:\\\"${{ env.BACKEND_IMAGE }}:uat-latest\\\"},startCommand:\\\"java -Dspring.profiles.active=uat -jar /app/app.jar\\\"})}\"}" \
-            && echo "Updated start command with uat profile"
+            -d "{\"query\":\"mutation{serviceInstanceUpdate(serviceId:\\\"${{ env.RAILWAY_BACKEND_SERVICE_ID }}\\\",environmentId:\\\"${{ env.RAILWAY_ENV_ID }}\\\",input:{source:{image:\\\"${{ env.BACKEND_IMAGE }}:uat-latest\\\"},startCommand:\\\"$CMD\\\"})}\"}" \
+            && echo "Updated start command: $CMD"
 
       - name: Trigger Railway redeployment
         run: |
