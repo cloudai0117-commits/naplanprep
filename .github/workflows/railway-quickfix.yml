@@ -1,8 +1,6 @@
 name: Railway Quick Fix — Force UAT Profile
 
 on:
-  push:
-    branches: [develop]
   workflow_dispatch:
 
 env:
