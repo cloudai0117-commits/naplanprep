@@ -1,17 +1,23 @@
 spring:
   datasource:
-    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/naplanprep_uat
-    username: ${DB_USERNAME:postgres}
-    password: ${DB_PASSWORD:postgres}
+    # Railway injects DATABASE_URL (postgresql://user:pass@host:port/db) — use it directly if available,
+    # otherwise fall back to individual DB_HOST/DB_PORT vars set manually in Railway dashboard
+    url: ${DATABASE_URL:${SPRING_DATASOURCE_URL:jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:naplanprep_uat}}}
+    username: ${DB_USERNAME:${PGUSER:postgres}}
+    password: ${DB_PASSWORD:${PGPASSWORD:postgres}}
     driver-class-name: org.postgresql.Driver
     hikari:
       maximum-pool-size: 20
+      connection-timeout: 30000
+      initialization-fail-timeout: 60000
   data:
     redis:
-      host: ${REDIS_HOST:localhost}
-      port: ${REDIS_PORT:6379}
-      password: ${REDIS_PASSWORD:}
+      # Railway injects REDIS_URL (redis://[:password@]host:port) — prefer individual vars for simplicity
+      host: ${REDIS_HOST:${REDISHOST:localhost}}
+      port: ${REDIS_PORT:${REDISPORT:6379}}
+      password: ${REDIS_PASSWORD:${REDISPASSWORD:}}
       timeout: 2000ms
+      connect-timeout: 5000ms
 
 logging:
   level:
@@ -20,14 +26,14 @@ logging:
 
 app:
   jwt:
-    private-key-path: ${JWT_PRIVATE_KEY_PATH}
-    public-key-path: ${JWT_PUBLIC_KEY_PATH}
+    private-key-path: ${JWT_PRIVATE_KEY_PATH:}
+    public-key-path: ${JWT_PUBLIC_KEY_PATH:}
     access-token-expiry: 900
     refresh-token-expiry: 604800
   stripe:
-    secret-key: ${STRIPE_SECRET_KEY}
-    webhook-secret: ${STRIPE_WEBHOOK_SECRET}
-    publishable-key: ${STRIPE_PUBLISHABLE_KEY}
+    secret-key: ${STRIPE_SECRET_KEY:sk_test_placeholder}
+    webhook-secret: ${STRIPE_WEBHOOK_SECRET:whsec_placeholder}
+    publishable-key: ${STRIPE_PUBLISHABLE_KEY:pk_test_placeholder}
   cors:
     allowed-origins:
       - https://naplanprep.com.au
@@ -36,6 +42,8 @@ app:
       - https://uat.naplanprep.com.au
       - https://admin.uat.naplanprep.com.au
       - https://*.vercel.app
+      - http://localhost:5173
+      - http://localhost:5174
   frontend-url: https://naplanprep.com.au
   rate-limit:
     auth-attempts: 5

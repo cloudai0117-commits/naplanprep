@@ -18,13 +18,19 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Set SPRING_PROFILES_ACTIVE=uat on Railway
+      - name: Set required Railway env vars
         run: |
-          curl -sf -X POST "${{ env.RAILWAY_API }}" \
-            -H "Content-Type: application/json" \
-            -H "Authorization: Bearer ${{ secrets.RAILWAY_TOKEN }}" \
-            -d "{\"query\":\"mutation{variableUpsert(input:{projectId:\\\"${{ env.RAILWAY_PROJECT_ID }}\\\",environmentId:\\\"${{ env.RAILWAY_ENV_ID }}\\\",serviceId:\\\"${{ env.RAILWAY_BACKEND_SERVICE_ID }}\\\",name:\\\"SPRING_PROFILES_ACTIVE\\\",value:\\\"uat\\\"})}\"}" \
-            && echo "Set SPRING_PROFILES_ACTIVE=uat"
+          upsert() {
+            curl -sf -X POST "${{ env.RAILWAY_API }}" \
+              -H "Content-Type: application/json" \
+              -H "Authorization: Bearer ${{ secrets.RAILWAY_TOKEN }}" \
+              -d "{\"query\":\"mutation{variableUpsert(input:{projectId:\\\"${{ env.RAILWAY_PROJECT_ID }}\\\",environmentId:\\\"${{ env.RAILWAY_ENV_ID }}\\\",serviceId:\\\"${{ env.RAILWAY_BACKEND_SERVICE_ID }}\\\",name:\\\"$1\\\",value:\\\"$2\\\"})}\"}" > /dev/null \
+              && echo "Set $1"
+          }
+          upsert "SPRING_PROFILES_ACTIVE" "uat"
+          upsert "STRIPE_SECRET_KEY"       "${{ secrets.STRIPE_TEST_SECRET_KEY }}"
+          upsert "STRIPE_WEBHOOK_SECRET"   "${{ secrets.STRIPE_TEST_WEBHOOK_SECRET }}"
+          upsert "STRIPE_PUBLISHABLE_KEY"  "${{ secrets.STRIPE_TEST_PUBLISHABLE_KEY }}"
 
       - name: Update start command to force uat profile
         run: |
