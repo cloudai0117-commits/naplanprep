@@ -218,7 +218,13 @@ export default function Dashboard() {
                       {Math.floor(exam.timeLimitSeconds / 60)}min
                     </span>
                     {isCompleted ? (
-                      <span className="text-xs text-green-600 font-medium">Completed</span>
+                      <Link
+                        to={`/exams/${exam.completedSessionId}/results`}
+                        onClick={(e) => e.stopPropagation()}
+                        className="text-xs text-primary-600 hover:text-primary-800 font-medium"
+                      >
+                        View Results →
+                      </Link>
                     ) : isLocked ? (
                       <span data-testid="upgrade-prompt" className="text-xs text-yellow-600 font-medium flex items-center gap-1">
                         <span data-testid="lock-icon">🔒</span> Upgrade required

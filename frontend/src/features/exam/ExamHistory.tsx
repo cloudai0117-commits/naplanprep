@@ -41,7 +41,7 @@ export default function ExamHistory() {
             </thead>
             <tbody className="divide-y divide-gray-100">
               {sessions.map((session: any) => (
-                <tr key={session.id} className="hover:bg-gray-50">
+                <tr key={session.id} data-testid="result-row" className="hover:bg-gray-50">
                   <td className="p-4 text-gray-700">
                     {format(new Date(session.createdAt), 'dd MMM yyyy, h:mm a')}
                   </td>

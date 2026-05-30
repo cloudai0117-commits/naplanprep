@@ -189,6 +189,7 @@ export default function ExamResultsDetailPage() {
                     return (
                       <div
                         key={opt}
+                        data-testid={isCorrect ? 'review-correct-answer' : isStudentAnswer && !isCorrect ? 'review-student-answer' : undefined}
                         className={`flex items-center px-3 py-2 rounded text-sm ${
                           isCorrect
                             ? 'bg-green-100 border border-green-300 text-green-800'
