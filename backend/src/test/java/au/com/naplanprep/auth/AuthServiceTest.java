@@ -1,7 +1,7 @@
 package au.com.naplanprep.auth;
 
 import au.com.naplanprep.auth.dto.RegisterRequest;
-import au.com.naplanprep.auth.entity.User;
+import au.com.naplanprep.auth.entity.User; // still needed for User.builder() in test setup
 import au.com.naplanprep.auth.repository.UserRepository;
 import au.com.naplanprep.auth.service.AuthService;
 import au.com.naplanprep.common.exception.BusinessException;
@@ -38,7 +38,7 @@ class AuthServiceTest {
         when(userRepository.existsByEmail(anyString())).thenReturn(true);
 
         RegisterRequest req = new RegisterRequest("John", "Doe", "john@test.com",
-            "Password1!", User.Role.STUDENT, 5);
+            "Password1!", 5, null);
 
         assertThrows(BusinessException.class, () -> authService.register(req));
         verify(userRepository, never()).save(any());
@@ -62,7 +62,7 @@ class AuthServiceTest {
         when(appProperties.getJwt()).thenReturn(jwtProps);
 
         RegisterRequest req = new RegisterRequest("John", "Doe", "john@test.com",
-            "Password1!", User.Role.STUDENT, 5);
+            "Password1!", 5, null);
 
         var response = authService.register(req);
 
