@@ -91,12 +91,17 @@ public class AuthService {
         }
 
         String blacklistKey = "blacklist:" + refreshToken;
-        if (Boolean.TRUE.equals(redisTemplate.hasKey(blacklistKey))) {
-            throw new BusinessException("Refresh token already used");
+        try {
+            if (Boolean.TRUE.equals(redisTemplate.hasKey(blacklistKey))) {
+                throw new BusinessException("Refresh token already used");
+            }
+            redisTemplate.opsForValue().set(blacklistKey, "1",
+                Duration.ofSeconds(appProperties.getJwt().getRefreshTokenExpiry()));
+        } catch (BusinessException e) {
+            throw e;
+        } catch (Exception redisEx) {
+            log.warn("Redis unavailable for token blacklist check — skipping: {}", redisEx.getMessage());
         }
-
-        redisTemplate.opsForValue().set(blacklistKey, "1",
-            Duration.ofSeconds(appProperties.getJwt().getRefreshTokenExpiry()));
 
         String userId = claims.getSubject();
         User user = userRepository.findById(java.util.UUID.fromString(userId))
@@ -107,8 +112,12 @@ public class AuthService {
 
     public void logout(String token) {
         if (token != null && jwtTokenProvider.isTokenValid(token)) {
-            redisTemplate.opsForValue().set("blacklist:" + token, "1",
-                Duration.ofSeconds(appProperties.getJwt().getAccessTokenExpiry()));
+            try {
+                redisTemplate.opsForValue().set("blacklist:" + token, "1",
+                    Duration.ofSeconds(appProperties.getJwt().getAccessTokenExpiry()));
+            } catch (Exception redisEx) {
+                log.warn("Redis unavailable for logout blacklist — token not blacklisted: {}", redisEx.getMessage());
+            }
         }
     }
 

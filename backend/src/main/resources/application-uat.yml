@@ -12,12 +12,15 @@ spring:
       initialization-fail-timeout: 60000
   data:
     redis:
-      # Railway injects REDIS_URL (redis://[:password@]host:port) — prefer individual vars for simplicity
+      # Railway injects REDIS_HOST/REDIS_PORT from linked Redis service
       host: ${REDIS_HOST:${REDISHOST:localhost}}
       port: ${REDIS_PORT:${REDISPORT:6379}}
       password: ${REDIS_PASSWORD:${REDISPASSWORD:}}
       timeout: 2000ms
-      connect-timeout: 5000ms
+      connect-timeout: 3000ms
+      lettuce:
+        pool:
+          enabled: false
 
 logging:
   level:
