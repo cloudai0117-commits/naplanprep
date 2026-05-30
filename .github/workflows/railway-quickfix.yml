@@ -1,0 +1,59 @@
+name: Railway Quick Fix — Force UAT Profile
+
+on:
+  push:
+    branches: [develop]
+  workflow_dispatch:
+
+env:
+  RAILWAY_API: https://backboard.railway.app/graphql/v2
+  RAILWAY_PROJECT_ID: fc40e9ef-0983-4774-b3ec-7ec138bb370a
+  RAILWAY_ENV_ID: 588e636a-0be4-4fee-8a7e-02ce26f5ec6f
+  RAILWAY_BACKEND_SERVICE_ID: 58b84f41-861e-41e1-9440-e73d5a54e18b
+  BACKEND_IMAGE: ghcr.io/${{ github.repository_owner }}/naplanprep-backend
+
+jobs:
+  fix-railway:
+    name: Fix Railway — Set UAT profile and redeploy existing image
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Set SPRING_PROFILES_ACTIVE=uat on Railway
+        run: |
+          curl -sf -X POST "${{ env.RAILWAY_API }}" \
+            -H "Content-Type: application/json" \
+            -H "Authorization: Bearer ${{ secrets.RAILWAY_TOKEN }}" \
+            -d "{\"query\":\"mutation{variableUpsert(input:{projectId:\\\"${{ env.RAILWAY_PROJECT_ID }}\\\",environmentId:\\\"${{ env.RAILWAY_ENV_ID }}\\\",serviceId:\\\"${{ env.RAILWAY_BACKEND_SERVICE_ID }}\\\",name:\\\"SPRING_PROFILES_ACTIVE\\\",value:\\\"uat\\\"})}\"}" \
+            && echo "Set SPRING_PROFILES_ACTIVE=uat"
+
+      - name: Update start command to force uat profile
+        run: |
+          curl -sf -X POST "${{ env.RAILWAY_API }}" \
+            -H "Content-Type: application/json" \
+            -H "Authorization: Bearer ${{ secrets.RAILWAY_TOKEN }}" \
+            -d "{\"query\":\"mutation{serviceInstanceUpdate(serviceId:\\\"${{ env.RAILWAY_BACKEND_SERVICE_ID }}\\\",environmentId:\\\"${{ env.RAILWAY_ENV_ID }}\\\",input:{source:{image:\\\"${{ env.BACKEND_IMAGE }}:uat-latest\\\"},startCommand:\\\"java -Dspring.profiles.active=uat -jar /app/app.jar\\\"})}\"}" \
+            && echo "Updated start command with uat profile"
+
+      - name: Trigger Railway redeployment
+        run: |
+          curl -sf -X POST "${{ env.RAILWAY_API }}" \
+            -H "Content-Type: application/json" \
+            -H "Authorization: Bearer ${{ secrets.RAILWAY_TOKEN }}" \
+            -d "{\"query\":\"mutation{environmentTriggersDeploy(input:{projectId:\\\"${{ env.RAILWAY_PROJECT_ID }}\\\",environmentId:\\\"${{ env.RAILWAY_ENV_ID }}\\\",serviceId:\\\"${{ env.RAILWAY_BACKEND_SERVICE_ID }}\\\"})}\"}" \
+            && echo "Triggered Railway redeployment"
+
+      - name: Wait for backend to start (180s)
+        run: sleep 180
+
+      - name: Health check
+        run: |
+          for i in $(seq 1 10); do
+            if curl -sf "https://naplanprep-backend-uat-uat.up.railway.app/actuator/health"; then
+              echo "Backend is UP"
+              exit 0
+            fi
+            echo "Attempt $i/10 — waiting 15s..."
+            sleep 15
+          done
+          echo "Backend still not responding after retries"
+          exit 1
