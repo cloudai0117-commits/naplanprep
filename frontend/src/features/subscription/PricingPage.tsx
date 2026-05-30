@@ -1,6 +1,8 @@
 import { useState } from 'react'
 import { useQuery, useMutation } from '@tanstack/react-query'
+import { useNavigate } from 'react-router-dom'
 import apiClient from '@/api/client'
+import { useAuthStore } from '@/store/authStore'
 
 interface Plan {
   id: string
@@ -18,6 +20,9 @@ interface Plan {
 
 export default function PricingPage() {
   const [interval, setInterval] = useState<'monthly' | 'annual'>('monthly')
+  const [checkoutError, setCheckoutError] = useState<string | null>(null)
+  const { isAuthenticated } = useAuthStore()
+  const navigate = useNavigate()
 
   const { data: plans, isLoading } = useQuery<Plan[]>({
     queryKey: ['plans'],
@@ -27,9 +32,8 @@ export default function PricingPage() {
   const { data: currentSub } = useQuery({
     queryKey: ['current-subscription'],
     queryFn: () => apiClient.get('/subscriptions/current').then((r) => r.data.data),
+    enabled: isAuthenticated,
   })
-
-  const [checkoutError, setCheckoutError] = useState<string | null>(null)
 
   const { mutate: checkout, isPending } = useMutation({
     mutationFn: (planSlug: string) =>
@@ -40,8 +44,9 @@ export default function PricingPage() {
       if (url) window.location.href = url
       else setCheckoutError('No checkout URL returned. Please try again.')
     },
-    onError: (err: any) => {
-      setCheckoutError(err?.response?.data?.errors?.[0] || 'Checkout failed. Stripe may not be configured in UAT.')
+    onError: (error: any) => {
+      const msg = error?.response?.data?.errors?.[0] || error?.response?.data?.message || 'Checkout failed. Stripe may not be configured in UAT.'
+      setCheckoutError(msg)
     },
   })
 
@@ -92,10 +97,17 @@ export default function PricingPage() {
         </div>
       )}
 
-      {checkoutError && <div className="p-3 bg-red-50 border border-red-200 text-red-700 rounded-lg text-sm text-center">{checkoutError}</div>}
+      {checkoutError && (
+        <div className="p-3 bg-red-50 border border-red-200 text-red-700 rounded-lg text-sm text-center">
+          {checkoutError}
+          {checkoutError.includes('not configured') && (
+            <span className="block mt-1 text-red-500">Stripe payment keys need to be configured. Contact support.</span>
+          )}
+        </div>
+      )}
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        {plans?.map((plan) => {
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        {plans?.filter((p) => p.slug !== 'family').map((plan) => {
           const price = interval === 'annual' && plan.annualPrice
             ? (plan.annualPrice / 12).toFixed(2)
             : plan.monthlyPrice.toFixed(2)
@@ -180,7 +192,14 @@ export default function PricingPage() {
                 </div>
               ) : (
                 <button
-                  onClick={() => checkout(plan.slug)}
+                  onClick={() => {
+                    setCheckoutError(null)
+                    if (!isAuthenticated) {
+                      navigate('/register')
+                      return
+                    }
+                    checkout(plan.slug)
+                  }}
                   disabled={isPending}
                   className={`py-2 px-4 rounded-lg font-semibold text-sm transition-colors ${
                     isPremium
@@ -188,7 +207,7 @@ export default function PricingPage() {
                       : 'bg-gray-800 text-white hover:bg-gray-900'
                   }`}
                 >
-                  {isPending ? 'Loading...' : `Get ${plan.name}`}
+                  {isPending ? 'Loading...' : isAuthenticated ? `Get ${plan.name}` : `Sign up — ${plan.name}`}
                 </button>
               )}
             </div>

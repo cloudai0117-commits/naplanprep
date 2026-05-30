@@ -1,4 +1,5 @@
 import axios from 'axios'
+import { useAdminStore } from '@/store/adminStore'
 
 const apiClient = axios.create({
   baseURL: import.meta.env.VITE_API_URL,
@@ -15,7 +16,7 @@ apiClient.interceptors.response.use(
   (res) => res,
   (error) => {
     if (error.response?.status === 401 || error.response?.status === 403) {
-      localStorage.removeItem('admin-token')
+      useAdminStore.getState().logout()
       window.location.href = '/login'
     }
     return Promise.reject(error)

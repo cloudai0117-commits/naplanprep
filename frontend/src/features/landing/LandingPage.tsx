@@ -34,14 +34,6 @@ const plans = [
     cta: 'Start Premium',
     highlight: true,
   },
-  {
-    name: 'Family',
-    price: '$34.99',
-    period: '/month',
-    features: ['Up to 4 children', 'All Premium features', 'Family progress overview', 'Priority support'],
-    cta: 'Start Family',
-    highlight: false,
-  },
 ]
 
 export default function LandingPage() {
@@ -96,7 +88,7 @@ export default function LandingPage() {
           <p className="text-center text-gray-600 mb-12">
             Cancel anytime. Annual plans save up to 15%.
           </p>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             {plans.map((plan) => (
               <div
                 key={plan.name}

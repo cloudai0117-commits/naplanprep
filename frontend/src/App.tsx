@@ -34,6 +34,10 @@ function App() {
           element={isAuthenticated ? <Navigate to="/dashboard" replace /> : <RegisterPage />}
         />
 
+        <Route element={<Layout />}>
+          <Route path="/pricing" element={<PricingPage />} />
+        </Route>
+
         <Route element={<ProtectedRoute />}>
           <Route element={<Layout />}>
             <Route path="/dashboard" element={<Dashboard />} />
@@ -43,7 +47,6 @@ function App() {
             <Route path="/exams/:sessionId/play" element={<ExamPlayer />} />
             <Route path="/exams/:sessionId/results" element={<ResultsPage />} />
             <Route path="/history" element={<ExamHistory />} />
-            <Route path="/pricing" element={<PricingPage />} />
             <Route path="/parent" element={<ParentDashboard />} />
             <Route path="/settings" element={<ProfileSettings />} />
             <Route path="/admin/schools" element={<SchoolsPage />} />
