@@ -39,6 +39,10 @@ public interface ExamRepository extends JpaRepository<Exam, UUID> {
     @Query("SELECT e FROM Exam e WHERE e.status = 'PUBLISHED' AND e.packageTier IN :tiers")
     List<Exam> findAllPublishedForTiers(@Param("tiers") List<Exam.PackageTier> tiers);
 
+    /** All published exams regardless of tier — used for dashboard availability display including locked exams. */
+    @Query("SELECT e FROM Exam e WHERE e.status = 'PUBLISHED' ORDER BY e.packageTier ASC, e.yearLevel ASC")
+    List<Exam> findAllPublished();
+
     @Query("SELECT COUNT(es) FROM ExamSession es WHERE es.examId = :examId AND es.status = 'SUBMITTED'")
     long countAttemptsByExamId(@Param("examId") UUID examId);
 }

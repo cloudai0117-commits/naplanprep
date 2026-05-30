@@ -88,8 +88,7 @@ public class ExamService {
     @Transactional(readOnly = true)
     public List<AvailableExamResponse> getAvailableExams(UUID userId) {
         Exam.PackageTier userTier = resolveUserTier(userId);
-        List<Exam.PackageTier> accessibleTiers = userTier.accessibleTiers();
-        List<Exam> all = examRepository.findAllPublishedForTiers(accessibleTiers);
+        List<Exam> all = examRepository.findAllPublished();
         Instant now = Instant.now();
 
         return all.stream().map(exam -> {
