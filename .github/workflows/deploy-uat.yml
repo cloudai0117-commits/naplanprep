@@ -94,16 +94,17 @@ jobs:
               -d "{\"query\":\"mutation{variableUpsert(input:{projectId:\\\"${{ env.RAILWAY_PROJECT_ID }}\\\",environmentId:\\\"${{ env.RAILWAY_ENV_ID }}\\\",serviceId:\\\"${{ env.RAILWAY_BACKEND_SERVICE_ID }}\\\",name:\\\"$1\\\",value:\\\"$2\\\"})}\"}"\
               > /dev/null
           }
-          railway_var "STRIPE_SECRET_KEY"    "${{ secrets.STRIPE_TEST_SECRET_KEY }}"
-          railway_var "STRIPE_WEBHOOK_SECRET" "${{ secrets.STRIPE_TEST_WEBHOOK_SECRET }}"
+          railway_var "STRIPE_SECRET_KEY"       "${{ secrets.STRIPE_TEST_SECRET_KEY }}"
+          railway_var "STRIPE_WEBHOOK_SECRET"  "${{ secrets.STRIPE_TEST_WEBHOOK_SECRET }}"
           railway_var "STRIPE_PUBLISHABLE_KEY" "${{ secrets.STRIPE_TEST_PUBLISHABLE_KEY }}"
+          railway_var "SPRING_PROFILES_ACTIVE" "uat"
 
       - name: Update Railway service image and start command
         run: |
           curl -sf -X POST "${{ env.RAILWAY_API }}" \
             -H "Content-Type: application/json" \
             -H "Authorization: Bearer ${{ secrets.RAILWAY_TOKEN }}" \
-            -d "{\"query\":\"mutation{serviceInstanceUpdate(serviceId:\\\"${{ env.RAILWAY_BACKEND_SERVICE_ID }}\\\",environmentId:\\\"${{ env.RAILWAY_ENV_ID }}\\\",input:{source:{image:\\\"${{ env.BACKEND_IMAGE }}:${{ needs.build-and-push.outputs.image-tag }}\\\"},startCommand:\\\"java -jar /app/app.jar\\\"})}\"}"
+            -d "{\"query\":\"mutation{serviceInstanceUpdate(serviceId:\\\"${{ env.RAILWAY_BACKEND_SERVICE_ID }}\\\",environmentId:\\\"${{ env.RAILWAY_ENV_ID }}\\\",input:{source:{image:\\\"${{ env.BACKEND_IMAGE }}:${{ needs.build-and-push.outputs.image-tag }}\\\"},startCommand:\\\"java -Dspring.profiles.active=uat -jar /app/app.jar\\\"})}\"}"
 
       - name: Trigger Railway redeployment
         run: |
