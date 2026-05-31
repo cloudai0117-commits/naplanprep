@@ -1,6 +1,7 @@
 package au.com.naplanprep.exam.entity;
 
 import au.com.naplanprep.content.entity.Question;
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.*;
 import lombok.*;
 import org.hibernate.annotations.CreationTimestamp;
@@ -61,6 +62,7 @@ public class Exam {
     @UpdateTimestamp
     private Instant updatedAt;
 
+    @JsonIgnore
     @OneToMany(mappedBy = "exam", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
     @OrderBy("questionOrder ASC")
     @Builder.Default

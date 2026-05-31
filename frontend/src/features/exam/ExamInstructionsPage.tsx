@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation } from '@tanstack/react-query'
 import apiClient from '@/api/client'
@@ -13,11 +14,17 @@ export default function ExamInstructionsPage() {
 
   const exam = exams?.find((e: any) => e.id === examId)
 
+  const [startError, setStartError] = useState<string | null>(null)
+
   const { mutate: startExam, isPending } = useMutation({
     mutationFn: () => apiClient.post(`/exams/${examId}/start`),
     onSuccess: (res) => {
       const sessionId = res.data.data?.sessionId
       if (sessionId) navigate(`/exams/${sessionId}/play`)
+    },
+    onError: (err: any) => {
+      const msg = err?.response?.data?.errors?.[0] || err?.message || 'Failed to start exam'
+      setStartError(msg)
     },
   })
 
@@ -156,13 +163,20 @@ export default function ExamInstructionsPage() {
             This exam is no longer available.
           </div>
         ) : (
-          <button
-            onClick={() => startExam()}
-            disabled={isPending}
-            className="btn-primary w-full py-3 text-base"
-          >
-            {isPending ? 'Starting...' : 'Start Exam'}
-          </button>
+          <div className="space-y-3">
+            {startError && (
+              <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">
+                {startError}
+              </div>
+            )}
+            <button
+              onClick={() => { setStartError(null); startExam() }}
+              disabled={isPending}
+              className="btn-primary w-full py-3 text-base"
+            >
+              {isPending ? 'Starting...' : 'Start Exam'}
+            </button>
+          </div>
         )}
       </div>
     </div>
