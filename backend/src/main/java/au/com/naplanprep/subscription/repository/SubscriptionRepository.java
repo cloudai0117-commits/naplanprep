@@ -13,7 +13,11 @@ import java.util.Optional;
 import java.util.UUID;
 
 public interface SubscriptionRepository extends JpaRepository<Subscription, UUID> {
-    Optional<Subscription> findByUserIdAndStatusIn(UUID userId, List<Subscription.SubscriptionStatus> statuses);
+
+    /** Returns the most recent active/trialing subscription for a user.
+     *  Uses findFirst to handle edge cases where duplicate rows exist. */
+    Optional<Subscription> findFirstByUserIdAndStatusInOrderByCreatedAtDesc(UUID userId, List<Subscription.SubscriptionStatus> statuses);
+
     Optional<Subscription> findByStripeSubscriptionId(String stripeSubscriptionId);
     Page<Subscription> findAllByOrderByCreatedAtDesc(Pageable pageable);
     long countByStatus(Subscription.SubscriptionStatus status);

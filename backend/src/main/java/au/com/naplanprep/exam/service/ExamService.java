@@ -441,7 +441,7 @@ public class ExamService {
     }
 
     private Exam.PackageTier resolveUserTier(UUID userId) {
-        return subscriptionRepository.findByUserIdAndStatusIn(
+        return subscriptionRepository.findFirstByUserIdAndStatusInOrderByCreatedAtDesc(
                 userId, List.of(Subscription.SubscriptionStatus.ACTIVE, Subscription.SubscriptionStatus.TRIALING))
             .map(sub -> {
                 String name = sub.getPlan().getName().toUpperCase();

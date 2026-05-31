@@ -112,13 +112,13 @@ public class SubscriptionService {
     }
 
     public Optional<Subscription> getCurrentSubscription(UUID userId) {
-        return subscriptionRepository.findByUserIdAndStatusIn(userId,
+        return subscriptionRepository.findFirstByUserIdAndStatusInOrderByCreatedAtDesc(userId,
             List.of(Subscription.SubscriptionStatus.ACTIVE, Subscription.SubscriptionStatus.TRIALING));
     }
 
     @Transactional
     public void cancelSubscription(UUID userId) {
-        Subscription sub = subscriptionRepository.findByUserIdAndStatusIn(userId,
+        Subscription sub = subscriptionRepository.findFirstByUserIdAndStatusInOrderByCreatedAtDesc(userId,
             List.of(Subscription.SubscriptionStatus.ACTIVE, Subscription.SubscriptionStatus.TRIALING))
             .orElseThrow(() -> new BusinessException("No active subscription found"));
 

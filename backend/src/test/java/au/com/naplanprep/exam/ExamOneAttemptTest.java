@@ -66,7 +66,7 @@ class ExamOneAttemptTest {
     @Test
     void startAdminExam_whenAlreadySubmitted_throwsConflict() {
         when(examRepository.findById(examId)).thenReturn(Optional.of(publishedExam));
-        when(subscriptionRepository.findByUserIdAndStatusIn(any(), any())).thenReturn(Optional.empty());
+        when(subscriptionRepository.findFirstByUserIdAndStatusInOrderByCreatedAtDesc(any(), any())).thenReturn(Optional.empty());
         when(sessionRepository.existsByUserIdAndExamIdAndStatus(
             userId, examId, ExamSession.SessionStatus.SUBMITTED)).thenReturn(true);
 
@@ -86,7 +86,7 @@ class ExamOneAttemptTest {
     @Test
     void startAdminExam_firstAttempt_createsSession() {
         when(examRepository.findById(examId)).thenReturn(Optional.of(publishedExam));
-        when(subscriptionRepository.findByUserIdAndStatusIn(any(), any())).thenReturn(Optional.empty());
+        when(subscriptionRepository.findFirstByUserIdAndStatusInOrderByCreatedAtDesc(any(), any())).thenReturn(Optional.empty());
         when(sessionRepository.existsByUserIdAndExamIdAndStatus(
             userId, examId, ExamSession.SessionStatus.SUBMITTED)).thenReturn(false);
 
@@ -129,7 +129,7 @@ class ExamOneAttemptTest {
     void startAdminExam_wrongTier_throwsForbidden() {
         publishedExam.setPackageTier(Exam.PackageTier.PREMIUM);
         when(examRepository.findById(examId)).thenReturn(Optional.of(publishedExam));
-        when(subscriptionRepository.findByUserIdAndStatusIn(any(), any())).thenReturn(Optional.empty());
+        when(subscriptionRepository.findFirstByUserIdAndStatusInOrderByCreatedAtDesc(any(), any())).thenReturn(Optional.empty());
 
         ResponseStatusException ex = assertThrows(ResponseStatusException.class,
             () -> examService.startAdminExam(examId, userId));
