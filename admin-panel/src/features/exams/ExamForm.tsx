@@ -16,7 +16,7 @@ type FormValues = {
 }
 
 const DOMAINS = ['NUMERACY', 'READING', 'WRITING', 'SPELLING', 'GRAMMAR_PUNCTUATION']
-const TIERS = ['FREE', 'STANDARD', 'PREMIUM', 'FAMILY']
+const TIERS = ['FREE', 'STANDARD', 'PREMIUM']
 const YEAR_LEVELS = [3, 5, 7, 9]
 
 export default function ExamForm() {

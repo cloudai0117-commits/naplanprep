@@ -12,12 +12,16 @@ apiClient.interceptors.request.use((config) => {
   return config
 })
 
+let isRedirecting = false
+
 apiClient.interceptors.response.use(
   (res) => res,
   (error) => {
-    if (error.response?.status === 401 || error.response?.status === 403) {
+    if ((error.response?.status === 401 || error.response?.status === 403) && !isRedirecting) {
+      isRedirecting = true
       useAdminStore.getState().logout()
-      window.location.href = '/login'
+      window.location.replace('/login')
+      setTimeout(() => { isRedirecting = false }, 3000)
     }
     return Promise.reject(error)
   }

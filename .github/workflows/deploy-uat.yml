@@ -58,7 +58,7 @@ jobs:
           context: ./frontend
           push: true
           build-args: |
-            VITE_API_URL=${{ vars.UAT_API_URL }}
+            VITE_API_URL=${{ vars.UAT_API_URL || 'https://naplanprep-backend-uat-uat.up.railway.app/v1' }}
             VITE_STRIPE_KEY=${{ secrets.STRIPE_TEST_PUBLISHABLE_KEY }}
           tags: |
             ${{ env.FRONTEND_IMAGE }}:${{ steps.tag.outputs.tag }}
@@ -72,7 +72,7 @@ jobs:
           context: ./admin-panel
           push: true
           build-args: |
-            VITE_API_URL=${{ vars.UAT_API_URL }}
+            VITE_API_URL=${{ vars.UAT_API_URL || 'https://naplanprep-backend-uat-uat.up.railway.app/v1' }}
           tags: |
             ${{ env.ADMIN_IMAGE }}:${{ steps.tag.outputs.tag }}
             ${{ env.ADMIN_IMAGE }}:uat-latest
@@ -146,8 +146,10 @@ jobs:
       - name: Deploy frontend to Vercel UAT
         run: |
           cd frontend
+          UAT_API="${{ vars.UAT_API_URL }}"
+          if [ -z "$UAT_API" ]; then UAT_API="https://naplanprep-backend-uat-uat.up.railway.app/v1"; fi
           vercel --token ${{ secrets.VERCEL_TOKEN }} \
-            --build-env VITE_API_URL=${{ vars.UAT_API_URL }} \
+            --build-env VITE_API_URL="$UAT_API" \
             --build-env VITE_STRIPE_KEY=${{ secrets.STRIPE_TEST_PUBLISHABLE_KEY }} \
             --scope ${{ secrets.VERCEL_ORG_ID }} \
             --prod --yes
@@ -172,8 +174,10 @@ jobs:
       - name: Deploy admin to Vercel UAT
         run: |
           cd admin-panel
+          UAT_API="${{ vars.UAT_API_URL }}"
+          if [ -z "$UAT_API" ]; then UAT_API="https://naplanprep-backend-uat-uat.up.railway.app/v1"; fi
           vercel --token ${{ secrets.VERCEL_TOKEN }} \
-            --build-env VITE_API_URL=${{ vars.UAT_API_URL }} \
+            --build-env VITE_API_URL="$UAT_API" \
             --scope ${{ secrets.VERCEL_ORG_ID }} \
             --prod --yes
         env:

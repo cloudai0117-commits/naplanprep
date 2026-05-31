@@ -17,8 +17,11 @@ public interface UserRepository extends JpaRepository<User, UUID> {
     @Query("SELECT u FROM User u LEFT JOIN FETCH u.profile WHERE u.id = :id")
     Optional<User> findByIdWithProfile(@Param("id") UUID id);
 
-    @Query("SELECT u FROM User u LEFT JOIN FETCH u.profile WHERE " +
-        "(:search IS NULL OR LOWER(u.email) LIKE LOWER(CONCAT('%', :search, '%')) " +
-        "OR LOWER(u.profile.firstName) LIKE LOWER(CONCAT('%', :search, '%')))")
+    @Query(value = "SELECT u FROM User u LEFT JOIN FETCH u.profile p WHERE " +
+        "(:search IS NULL OR :search = '' OR LOWER(u.email) LIKE LOWER(CONCAT('%', :search, '%')) " +
+        "OR LOWER(p.firstName) LIKE LOWER(CONCAT('%', :search, '%')))",
+        countQuery = "SELECT COUNT(u) FROM User u LEFT JOIN u.profile p WHERE " +
+        "(:search IS NULL OR :search = '' OR LOWER(u.email) LIKE LOWER(CONCAT('%', :search, '%')) " +
+        "OR LOWER(p.firstName) LIKE LOWER(CONCAT('%', :search, '%')))")
     Page<User> searchUsers(@Param("search") String search, Pageable pageable);
 }

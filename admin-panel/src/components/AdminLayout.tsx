@@ -5,6 +5,7 @@ import apiClient from '@/api/client'
 const navItems = [
   { path: '/dashboard', label: 'Dashboard', icon: '📊' },
   { path: '/users', label: 'Users', icon: '👥' },
+  { path: '/schools', label: 'Schools', icon: '🏫' },
   { path: '/questions', label: 'Question Bank', icon: '📚' },
   { path: '/exams', label: 'Exams', icon: '📝' },
   { path: '/subscriptions', label: 'Subscriptions', icon: '💳' },

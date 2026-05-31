@@ -20,10 +20,9 @@ const domains = [
 ]
 
 const TIER_LABELS: Record<string, string> = {
-  FREE: 'Free Exams',
-  STANDARD: 'Premium Exams',
-  PREMIUM: 'Advanced Exams',
-  FAMILY: 'Advanced Exams',
+  FREE: 'Free',
+  STANDARD: 'Premium',
+  PREMIUM: 'Advanced',
 }
 
 export default function ExamSelection() {
@@ -65,7 +64,7 @@ export default function ExamSelection() {
     }
   }
 
-  const tierOrder = ['FREE', 'STANDARD', 'PREMIUM', 'FAMILY']
+  const tierOrder = ['FREE', 'STANDARD', 'PREMIUM']
 
   return (
     <div className="max-w-3xl mx-auto space-y-8">

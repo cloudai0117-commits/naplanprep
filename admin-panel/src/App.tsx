@@ -14,6 +14,7 @@ import ExamList from '@/features/exams/ExamList'
 import ExamForm from '@/features/exams/ExamForm'
 import ExamQuestions from '@/features/exams/ExamQuestions'
 import ExamResults from '@/features/exams/ExamResults'
+import SchoolManagement from '@/features/schools/SchoolManagement'
 
 function App() {
   const { isAuthenticated } = useAdminStore()
@@ -30,6 +31,7 @@ function App() {
           <Route element={<AdminLayout />}>
             <Route path="/dashboard" element={<AdminDashboard />} />
             <Route path="/users" element={<UserManagement />} />
+            <Route path="/schools" element={<SchoolManagement />} />
             <Route path="/questions" element={<QuestionBank />} />
             <Route path="/subscriptions" element={<SubscriptionManagement />} />
             <Route path="/exams" element={<ExamList />} />

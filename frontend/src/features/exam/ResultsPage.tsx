@@ -34,15 +34,14 @@ export default function ResultsPage() {
     return <div className="text-center py-20 text-gray-500">Results not found</div>
   }
 
-  const domainData = result.domainBreakdown
-    ? Object.entries(result.domainBreakdown)
-        .filter(([k]) => k.endsWith('_total'))
-        .map(([key, total]) => {
-          const domain = key.replace('_total', '')
-          const correct = (result.domainBreakdown[`${domain}_correct`] as number) || 0
-          const score = (total as number) > 0 ? Math.round((correct / (total as number)) * 100) : 0
-          return { domain: domain.replace('_', ' '), score, correct, total: total as number }
-        })
+  // API returns domainScores as { topic: { correct, total, percentage } }
+  const domainData = result.domainScores
+    ? Object.entries(result.domainScores).map(([topic, s]: [string, any]) => ({
+        domain: topic.replace(/_/g, ' '),
+        score: Math.round(s.percentage || 0),
+        correct: s.correct || 0,
+        total: s.total || 0,
+      }))
     : []
 
   return (
