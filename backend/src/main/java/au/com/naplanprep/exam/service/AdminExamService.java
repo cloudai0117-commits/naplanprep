@@ -75,8 +75,9 @@ public class AdminExamService {
     public Exam updateStatus(UUID examId, Exam.ExamStatus newStatus) {
         Exam exam = findExamOrThrow(examId);
         validateStatusTransition(exam.getStatus(), newStatus);
-        exam.setStatus(newStatus);
-        return examRepository.save(exam);
+        // Use native SQL to avoid Hibernate's PostgreSQL custom-enum-type cast issue
+        examRepository.updateStatusNative(examId, newStatus.name());
+        return findExamOrThrow(examId);
     }
 
     @Transactional(readOnly = true)

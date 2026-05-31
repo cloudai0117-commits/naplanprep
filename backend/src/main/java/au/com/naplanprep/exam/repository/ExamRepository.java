@@ -45,4 +45,9 @@ public interface ExamRepository extends JpaRepository<Exam, UUID> {
 
     @Query("SELECT COUNT(es) FROM ExamSession es WHERE es.examId = :examId AND es.status = 'SUBMITTED'")
     long countAttemptsByExamId(@Param("examId") UUID examId);
+
+    /** Native update to bypass Hibernate's custom-enum-type mapping for the exam_status column. */
+    @org.springframework.data.jpa.repository.Modifying
+    @Query(value = "UPDATE exams SET status = CAST(:status AS exam_status), updated_at = NOW() WHERE id = :id", nativeQuery = true)
+    void updateStatusNative(@Param("id") UUID id, @Param("status") String status);
 }
