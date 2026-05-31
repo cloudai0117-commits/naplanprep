@@ -47,6 +47,7 @@ export default function ExamPlayer() {
     enabled: !!sessionId,
   })
 
+  const sessionStatus = session?.status
   const currentQuestion = questions[currentIdx] || null
   const currentQuestionId: string = currentQuestion?.id || ''
 
@@ -84,12 +85,12 @@ export default function ExamPlayer() {
 
   // Block browser back navigation during an active exam session
   useEffect(() => {
-    if (!session || session.status !== 'IN_PROGRESS') return
+    if (!session || sessionStatus !== 'IN_PROGRESS') return
 
     // Push a dummy state so there's something to catch
     window.history.pushState({ examActive: true }, '')
 
-    const handlePopState = (e: PopStateEvent) => {
+    const handlePopState = (_e: PopStateEvent) => {
       // Re-push so the back button can't escape
       window.history.pushState({ examActive: true }, '')
       setShowBackWarning(true)
@@ -106,7 +107,7 @@ export default function ExamPlayer() {
       window.removeEventListener('popstate', handlePopState)
       window.removeEventListener('beforeunload', handleBeforeUnload)
     }
-  }, [session?.status])
+  }, [session, sessionStatus])
 
   // Track when the timer has actually started counting (i.e., had a positive value).
   // Prevents auto-submit firing on initial render when remaining is 0 by default.
@@ -117,10 +118,10 @@ export default function ExamPlayer() {
   }, [timer.remaining])
 
   useEffect(() => {
-    if (timer.remaining === 0 && hasTimerStarted.current && session?.status === 'IN_PROGRESS') {
+    if (timer.remaining === 0 && hasTimerStarted.current && sessionStatus === 'IN_PROGRESS') {
       submitExam()
     }
-  }, [timer.remaining, session?.status, submitExam])
+  }, [timer.remaining, sessionStatus, submitExam])
 
   if (sessionLoading || questionsLoading) {
     return (
