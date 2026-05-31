@@ -21,7 +21,7 @@ const YEAR_LEVELS = [3, 5, 7, 9]
 
 export default function ExamForm() {
   const { examId } = useParams<{ examId: string }>()
-  const isNew = examId === 'new'
+  const isNew = !examId
   const navigate = useNavigate()
   const queryClient = useQueryClient()
 
