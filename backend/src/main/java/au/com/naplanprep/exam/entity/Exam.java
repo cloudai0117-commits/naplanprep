@@ -4,7 +4,9 @@ import au.com.naplanprep.content.entity.Question;
 import jakarta.persistence.*;
 import lombok.*;
 import org.hibernate.annotations.CreationTimestamp;
+import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.annotations.UpdateTimestamp;
+import org.hibernate.type.SqlTypes;
 
 import java.time.Instant;
 import java.util.ArrayList;
@@ -34,10 +36,12 @@ public class Exam {
     private Integer yearLevel;
 
     @Enumerated(EnumType.STRING)
+    @JdbcTypeCode(SqlTypes.VARCHAR)
     @Column(nullable = false, columnDefinition = "domain_type")
     private Question.Domain domain;
 
     @Enumerated(EnumType.STRING)
+    @JdbcTypeCode(SqlTypes.VARCHAR)
     @Column(nullable = false, columnDefinition = "package_tier")
     @Builder.Default
     private PackageTier packageTier = PackageTier.FREE;
@@ -49,6 +53,7 @@ public class Exam {
     private Instant availableUntil;
 
     @Enumerated(EnumType.STRING)
+    @JdbcTypeCode(SqlTypes.VARCHAR)
     @Column(nullable = false, columnDefinition = "exam_status")
     @Builder.Default
     private ExamStatus status = ExamStatus.DRAFT;
