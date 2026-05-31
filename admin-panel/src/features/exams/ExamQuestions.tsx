@@ -19,9 +19,8 @@ export default function ExamQuestions() {
 
   const { data: examQuestions = [], isLoading: loadingExamQ } = useQuery({
     queryKey: ['admin-exam-questions', examId],
-    queryFn: () => apiClient.get(`/exams/sessions`).then(() =>
-      apiClient.get(`/admin/exams/${examId}`).then((r) => r.data.data?.examQuestions || [])
-    ),
+    queryFn: () =>
+      apiClient.get(`/admin/exams/${examId}`).then((r) => r.data.data?.questions || []),
     enabled: !!examId,
   })
 

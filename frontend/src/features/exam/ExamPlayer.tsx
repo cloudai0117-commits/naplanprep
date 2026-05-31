@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { useQuery, useMutation } from '@tanstack/react-query'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import apiClient from '@/api/client'
 
 function useTimer(expiresAt: string | undefined) {
@@ -25,6 +25,7 @@ function useTimer(expiresAt: string | undefined) {
 export default function ExamPlayer() {
   const { sessionId } = useParams<{ sessionId: string }>()
   const navigate = useNavigate()
+  const queryClient = useQueryClient()
   const [currentIdx, setCurrentIdx] = useState(0)
   const [answers, setAnswers] = useState<Record<string, string>>({})
   const [flagged, setFlagged] = useState<Record<string, boolean>>({})
@@ -61,6 +62,8 @@ export default function ExamPlayer() {
   const { mutate: submitExam, isPending: submitting } = useMutation({
     mutationFn: () => apiClient.post(`/exams/sessions/${sessionId}/submit`),
     onSuccess: (res) => {
+      queryClient.invalidateQueries({ queryKey: ['available-exams'] })
+      queryClient.invalidateQueries({ queryKey: ['progress-overview'] })
       const examId = res.data.data?.examId
       if (examId) {
         navigate(`/exams/${examId}/results/${sessionId}`)

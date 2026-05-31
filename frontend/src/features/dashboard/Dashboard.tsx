@@ -1,5 +1,6 @@
-import { useQuery } from '@tanstack/react-query'
-import { Link, useNavigate } from 'react-router-dom'
+import { useState, useEffect } from 'react'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { Link, useNavigate, useLocation } from 'react-router-dom'
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line } from 'recharts'
 import apiClient from '@/api/client'
 import { useAuthStore } from '@/store/authStore'
@@ -25,6 +26,20 @@ const tierBadge = (tier: string) => {
 export default function Dashboard() {
   const { user } = useAuthStore()
   const navigate = useNavigate()
+  const location = useLocation()
+  const queryClient = useQueryClient()
+  const [checkoutSuccess, setCheckoutSuccess] = useState(false)
+
+  useEffect(() => {
+    const params = new URLSearchParams(location.search)
+    if (params.get('checkout') === 'success') {
+      setCheckoutSuccess(true)
+      queryClient.invalidateQueries({ queryKey: ['current-subscription'] })
+      queryClient.invalidateQueries({ queryKey: ['available-exams'] })
+      queryClient.invalidateQueries({ queryKey: ['progress-overview'] })
+      navigate('/dashboard', { replace: true })
+    }
+  }, [location.search, navigate, queryClient])
 
   const { data: overview, isLoading } = useQuery({
     queryKey: ['progress-overview'],
@@ -57,6 +72,21 @@ export default function Dashboard() {
 
   return (
     <div className="space-y-6">
+      {checkoutSuccess && (
+        <div
+          data-testid="checkout-success-banner"
+          className="flex items-center justify-between p-4 bg-green-50 border border-green-200 rounded-lg text-green-800"
+        >
+          <span className="font-medium">Payment successful! Your new plan is now active.</span>
+          <button
+            onClick={() => setCheckoutSuccess(false)}
+            className="ml-4 text-green-600 hover:text-green-800 font-bold text-lg leading-none"
+            aria-label="Dismiss"
+          >
+            &times;
+          </button>
+        </div>
+      )}
       <div className="flex justify-between items-center">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">
