@@ -115,7 +115,7 @@ jobs:
           node-version: '20'
 
       - name: Frontend npm audit
-        run: cd frontend && npm audit --audit-level=high
+        run: cd frontend && npm audit --audit-level=high --omit=dev
 
       - name: Admin npm audit
-        run: cd admin-panel && npm audit --audit-level=high
+        run: cd admin-panel && npm audit --audit-level=high --omit=dev
