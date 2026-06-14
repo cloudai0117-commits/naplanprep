@@ -139,6 +139,9 @@ class QuestionAdminIntegrationTest {
     @Test
     void publishedQuestion_appearsInPublishedStatusFilter() {
         Question q = contentService.createQuestion(req(9, Question.Domain.NUMERACY, "Algebra"), creatorId);
+        // Flush before updateStatus: @GeneratedValue(UUID) causes em.merge() (not persist()),
+        // and a second merge before flush disrupts @CreationTimestamp. Force the INSERT now.
+        questionRepository.flush();
         contentService.updateStatus(q.getId(), Question.QuestionStatus.PUBLISHED);
 
         Page<Question> published = contentService.searchQuestions(
