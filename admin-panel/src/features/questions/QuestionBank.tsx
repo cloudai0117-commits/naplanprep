@@ -37,9 +37,11 @@ export default function QuestionBank() {
     },
   })
 
-  const { register, handleSubmit, reset } = useForm<QuestionForm>()
+  const { register, handleSubmit, reset, formState: { errors } } = useForm<QuestionForm>({
+    defaultValues: { questionType: 'MULTIPLE_CHOICE', yearLevel: 3, domain: 'NUMERACY', difficultyBand: 5 },
+  })
 
-  const { mutate: saveQuestion, isPending } = useMutation({
+  const { mutate: saveQuestion, isPending, error: saveError } = useMutation({
     mutationFn: (form: QuestionForm) => {
       const options = [form.option1, form.option2, form.option3, form.option4].filter(Boolean)
       const body = {
@@ -218,12 +220,14 @@ export default function QuestionBank() {
                 </div>
                 <div>
                   <label className="block text-xs font-medium text-gray-700 mb-1">Difficulty Band (1-10)</label>
-                  <input {...register('difficultyBand', { required: true, min: 1, max: 10 })} type="number" min={1} max={10} className="input-field" />
+                  <input {...register('difficultyBand', { required: true, min: 1, max: 10, valueAsNumber: true })} type="number" min={1} max={10} className="input-field" />
+                  {errors.difficultyBand && <p className="mt-1 text-xs text-red-600">Required, 1–10</p>}
                 </div>
               </div>
               <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1">Topic</label>
+                <label className="block text-xs font-medium text-gray-700 mb-1">Topic *</label>
                 <input {...register('topic', { required: true })} className="input-field" placeholder="e.g. Addition, Reading Comprehension" />
+                {errors.topic && <p className="mt-1 text-xs text-red-600">Topic is required</p>}
               </div>
               <div>
                 <label className="block text-xs font-medium text-gray-700 mb-1">Stimulus Text (optional)</label>
@@ -232,6 +236,7 @@ export default function QuestionBank() {
               <div>
                 <label className="block text-xs font-medium text-gray-700 mb-1">Question Text *</label>
                 <textarea {...register('questionText', { required: true })} rows={2} className="input-field" placeholder="What is...?" />
+                {errors.questionText && <p className="mt-1 text-xs text-red-600">Question text is required</p>}
               </div>
               <div className="grid grid-cols-2 gap-3">
                 {[1, 2, 3, 4].map((n) => (
@@ -244,11 +249,17 @@ export default function QuestionBank() {
               <div>
                 <label className="block text-xs font-medium text-gray-700 mb-1">Correct Answer *</label>
                 <input {...register('correctAnswerValue', { required: true })} className="input-field" placeholder="The correct answer value" />
+                {errors.correctAnswerValue && <p className="mt-1 text-xs text-red-600">Correct answer is required</p>}
               </div>
               <div>
                 <label className="block text-xs font-medium text-gray-700 mb-1">Explanation</label>
                 <textarea {...register('explanation')} rows={2} className="input-field" placeholder="Why is this the correct answer?" />
               </div>
+              {saveError && (
+                <div className="p-3 bg-red-50 border border-red-200 text-red-700 rounded-lg text-xs">
+                  {(saveError as any)?.response?.data?.errors?.[0] || (saveError as any)?.message || 'Failed to save question. Please try again.'}
+                </div>
+              )}
               <div className="flex space-x-3 pt-2">
                 <button type="button" onClick={() => setShowModal(false)} className="btn-secondary flex-1">Cancel</button>
                 <button type="submit" disabled={isPending} className="btn-primary flex-1">

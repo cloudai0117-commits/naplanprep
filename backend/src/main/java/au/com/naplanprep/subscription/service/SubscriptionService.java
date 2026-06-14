@@ -163,13 +163,40 @@ public class SubscriptionService {
         String userId = stripeSub.getMetadata().get("userId");
         String planSlug = stripeSub.getMetadata().get("planSlug");
 
-        if (userId == null || planSlug == null) {
-            log.warn("Missing metadata in subscription: {}", stripeSub.getId());
+        if (userId == null) {
+            log.warn("Missing userId metadata in subscription: {}", stripeSub.getId());
             return;
         }
 
-        Plan plan = planRepository.findBySlug(planSlug).orElse(null);
-        if (plan == null) return;
+        // Determine plan from price ID first — this handles portal upgrades where
+        // the metadata planSlug still reflects the original plan (metadata is not
+        // updated by Stripe when the customer changes plan via the billing portal).
+        Plan plan = null;
+        Subscription.BillingInterval billingInterval = Subscription.BillingInterval.MONTHLY;
+        if (stripeSub.getItems() != null && !stripeSub.getItems().getData().isEmpty()) {
+            String priceId = stripeSub.getItems().getData().get(0).getPrice().getId();
+            Optional<Plan> byMonthly = planRepository.findByStripeMonthlyPriceId(priceId);
+            if (byMonthly.isPresent()) {
+                plan = byMonthly.get();
+                billingInterval = Subscription.BillingInterval.MONTHLY;
+            } else {
+                Optional<Plan> byAnnual = planRepository.findByStripeAnnualPriceId(priceId);
+                if (byAnnual.isPresent()) {
+                    plan = byAnnual.get();
+                    billingInterval = Subscription.BillingInterval.ANNUAL;
+                }
+            }
+        }
+
+        // Fallback to metadata slug (works for initial checkout, price IDs may be placeholders in dev)
+        if (plan == null && planSlug != null) {
+            plan = planRepository.findBySlug(planSlug).orElse(null);
+        }
+
+        if (plan == null) {
+            log.warn("Could not determine plan for subscription: {}, planSlug={}", stripeSub.getId(), planSlug);
+            return;
+        }
 
         UUID userUUID = UUID.fromString(userId);
         Subscription.SubscriptionStatus status = mapStripeStatus(stripeSub.getStatus());
@@ -188,6 +215,7 @@ public class SubscriptionService {
 
         sub.setStatus(status);
         sub.setPlan(plan);
+        sub.setBillingInterval(billingInterval);
         sub.setCurrentPeriodStart(Instant.ofEpochSecond(stripeSub.getCurrentPeriodStart()));
         sub.setCurrentPeriodEnd(Instant.ofEpochSecond(stripeSub.getCurrentPeriodEnd()));
         if (stripeSub.getTrialEnd() != null) {
