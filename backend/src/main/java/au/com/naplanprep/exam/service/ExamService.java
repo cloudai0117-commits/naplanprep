@@ -14,10 +14,9 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
-import org.springframework.http.HttpStatus;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.web.server.ResponseStatusException;
 
 import java.time.Instant;
 import java.util.*;
@@ -136,29 +135,22 @@ public class ExamService {
         // Entitlement check
         Exam.PackageTier userTier = resolveUserTier(userId);
         if (!userTier.satisfies(exam.getPackageTier())) {
-            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
-                "Upgrade to " + exam.getPackageTier() + " to access this exam");
+            throw new AccessDeniedException("Upgrade to " + exam.getPackageTier() + " to access this exam");
         }
 
         // Time window check
         Instant now = Instant.now();
         if (exam.getAvailableFrom() != null && now.isBefore(exam.getAvailableFrom())) {
-            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
-                "Exam not yet open. Opens at " + exam.getAvailableFrom());
+            throw new BusinessException("Exam not yet open. Opens at " + exam.getAvailableFrom());
         }
         if (exam.getAvailableUntil() != null && now.isAfter(exam.getAvailableUntil())) {
-            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
-                "Exam window has closed");
+            throw new BusinessException("Exam window has closed");
         }
 
         // One-attempt enforcement
         if (sessionRepository.existsByUserIdAndExamIdAndStatus(
                 userId, examId, ExamSession.SessionStatus.SUBMITTED)) {
-            ExamSession prev = sessionRepository
-                .findByUserIdAndExamIdAndStatus(userId, examId, ExamSession.SessionStatus.SUBMITTED)
-                .orElseThrow();
-            throw new ResponseStatusException(HttpStatus.CONFLICT,
-                "You have already completed this exam. Session: " + prev.getId());
+            throw new BusinessException("You have already completed this exam");
         }
 
         List<ExamQuestion> examQuestions = examQuestionRepository.findByExamIdOrdered(examId);
@@ -209,7 +201,7 @@ public class ExamService {
     public ExamSession getSession(UUID sessionId, UUID userId) {
         ExamSession session = sessionRepository.findById(sessionId)
             .orElseThrow(() -> new ResourceNotFoundException("ExamSession", sessionId.toString()));
-        if (!session.getUserId().equals(userId)) throw new BusinessException("Access denied");
+        if (!session.getUserId().equals(userId)) throw new AccessDeniedException("Access denied");
         if (session.getStatus() == ExamSession.SessionStatus.IN_PROGRESS
                 && Instant.now().isAfter(session.getExpiresAt())) {
             session.setStatus(ExamSession.SessionStatus.TIMED_OUT);
@@ -297,14 +289,14 @@ public class ExamService {
     public ExamResultDetailResponse getDetailedResult(UUID sessionId, UUID userId) {
         ExamSession session = sessionRepository.findById(sessionId)
             .orElseThrow(() -> new ResourceNotFoundException("ExamSession", sessionId.toString()));
-        if (!session.getUserId().equals(userId)) throw new BusinessException("Access denied");
+        if (!session.getUserId().equals(userId)) throw new AccessDeniedException("Access denied");
         return buildDetailedResult(session);
     }
 
     public ExamResult getResult(UUID sessionId, UUID userId) {
         ExamSession session = sessionRepository.findById(sessionId)
             .orElseThrow(() -> new ResourceNotFoundException("ExamSession", sessionId.toString()));
-        if (!session.getUserId().equals(userId)) throw new BusinessException("Access denied");
+        if (!session.getUserId().equals(userId)) throw new AccessDeniedException("Access denied");
         return resultRepository.findBySessionId(sessionId)
             .orElseThrow(() -> new ResourceNotFoundException("ExamResult", sessionId.toString()));
     }
