@@ -102,6 +102,7 @@ public class ExamService {
             .filter(exam -> userYearLevel == null || exam.getYearLevel() == null || exam.getYearLevel().equals(userYearLevel))
             .map(exam -> {
             int qCount = examQuestionRepository.findByExamIdOrdered(exam.getId()).size();
+            if (qCount == 0) return null;  // skip exams with no questions
             boolean attempted = sessionRepository.existsByUserIdAndExamIdAndStatus(
                 userId, exam.getId(), ExamSession.SessionStatus.SUBMITTED);
 
@@ -120,7 +121,7 @@ public class ExamService {
                 qCount, exam.getPackageTier(), availability,
                 attempted, completedSessionId
             );
-        }).toList();
+        }).filter(java.util.Objects::nonNull).toList();
     }
 
     @Transactional
