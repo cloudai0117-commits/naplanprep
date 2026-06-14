@@ -41,9 +41,9 @@ app:
     refresh-token-expiry: 604800
   stripe:
     secret-key: ${STRIPE_SECRET_KEY:sk_test_placeholder}
-    webhook-secret: ${STRIPE_WEBHOOK_SECRET:whsec_placeholder}
+    # Hardcoded placeholder so Railway STRIPE_WEBHOOK_SECRET cannot override bypass in UAT
+    webhook-secret: whsec_placeholder
     publishable-key: ${STRIPE_PUBLISHABLE_KEY:pk_test_placeholder}
-    test-bypass-enabled: true
   cors:
     allowed-origins:
       - https://naplanprep.com.au

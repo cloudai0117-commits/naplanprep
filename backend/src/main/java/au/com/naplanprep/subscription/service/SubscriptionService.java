@@ -21,7 +21,6 @@ import com.stripe.param.checkout.SessionCreateParams;
 import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -39,9 +38,6 @@ public class SubscriptionService {
     private final SubscriptionRepository subscriptionRepository;
     private final UserRepository userRepository;
     private final AppProperties appProperties;
-
-    @Value("${app.stripe.test-bypass-enabled:false}")
-    private boolean testBypassEnabled;
 
     @PostConstruct
     public void init() {
@@ -152,8 +148,7 @@ public class SubscriptionService {
         String webhookSecret = appProperties.getStripe().getWebhookSecret();
         boolean skipVerification = webhookSecret == null
             || webhookSecret.contains("placeholder")
-            || webhookSecret.equals("whsec_dummy")
-            || (testBypassEnabled && "t=1,v1=dummy_bypass".equals(sigHeader));
+            || webhookSecret.equals("whsec_dummy");
         try {
             if (skipVerification) {
                 log.warn("STRIPE_WEBHOOK_SECRET is not configured — skipping signature verification");
