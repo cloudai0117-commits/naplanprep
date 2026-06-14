@@ -49,7 +49,7 @@ class QuestionAdminIntegrationTest {
         User creator = new User();
         creator.setEmail("creator-" + UUID.randomUUID() + "@test.com");
         creator.setPassword("hashed");
-        creator.setRole(User.Role.ADMIN);
+        creator.setRole(User.Role.PLATFORM_ADMIN);
         creator.setStatus(User.UserStatus.ACTIVE);
         creatorId = userRepository.save(creator).getId();
     }
