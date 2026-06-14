@@ -238,6 +238,7 @@ class PlanUpgradeIntegrationTest {
             {
               "id": "evt_test_001",
               "object": "event",
+              "api_version": "2023-10-16",
               "type": "customer.subscription.created",
               "data": {
                 "object": {
@@ -282,6 +283,7 @@ class PlanUpgradeIntegrationTest {
             {
               "id": "evt_test_002",
               "object": "event",
+              "api_version": "2023-10-16",
               "type": "customer.subscription.updated",
               "data": {
                 "object": {

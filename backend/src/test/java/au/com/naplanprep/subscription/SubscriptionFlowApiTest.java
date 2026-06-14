@@ -57,9 +57,8 @@ class SubscriptionFlowApiTest {
     @ServiceConnection
     static PostgreSQLContainer<?> postgres = new PostgreSQLContainer<>("postgres:16-alpine");
 
-    @SuppressWarnings("rawtypes")
-    @MockBean
-    RedisTemplate redisTemplate;
+    @MockBean(name = "redisTemplate")
+    RedisTemplate<String, String> redisTemplate;
 
     @Autowired
     MockMvc mockMvc;
@@ -117,6 +116,7 @@ class SubscriptionFlowApiTest {
                 {
                   "id": "evt_%s",
                   "object": "event",
+                  "api_version": "2023-10-16",
                   "type": "%s",
                   "data": {
                     "object": {
@@ -356,6 +356,7 @@ class SubscriptionFlowApiTest {
                 {
                   "id": "evt_del_%s",
                   "object": "event",
+                  "api_version": "2023-10-16",
                   "type": "customer.subscription.deleted",
                   "data": {
                     "object": {
