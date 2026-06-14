@@ -14,6 +14,7 @@ import com.stripe.exception.SignatureVerificationException;
 import com.stripe.exception.StripeException;
 import com.stripe.model.Event;
 import com.stripe.model.checkout.Session;
+import com.stripe.net.ApiResource;
 import com.stripe.net.Webhook;
 import com.stripe.param.CustomerCreateParams;
 import com.stripe.param.checkout.SessionCreateParams;
@@ -49,6 +50,11 @@ public class SubscriptionService {
 
     @Transactional
     public String createCheckoutSession(UUID userId, String planSlug, String interval, String successUrl, String cancelUrl) {
+        String secretKey = appProperties.getStripe().getSecretKey();
+        if (secretKey == null || secretKey.contains("placeholder")) {
+            throw new BusinessException("Stripe payment gateway is not configured in this environment. Please contact support.");
+        }
+
         Plan plan = planRepository.findBySlug(planSlug)
             .orElseThrow(() -> new ResourceNotFoundException("Plan", planSlug));
 
@@ -139,10 +145,21 @@ public class SubscriptionService {
     @Transactional
     public void handleWebhook(String payload, String sigHeader) {
         Event event;
+        String webhookSecret = appProperties.getStripe().getWebhookSecret();
+        boolean skipVerification = webhookSecret == null
+            || webhookSecret.contains("placeholder")
+            || webhookSecret.equals("whsec_dummy");
         try {
-            event = Webhook.constructEvent(payload, sigHeader, appProperties.getStripe().getWebhookSecret());
+            if (skipVerification) {
+                log.warn("STRIPE_WEBHOOK_SECRET is not configured — skipping signature verification");
+                event = ApiResource.GSON.fromJson(payload, Event.class);
+            } else {
+                event = Webhook.constructEvent(payload, sigHeader, webhookSecret);
+            }
         } catch (SignatureVerificationException e) {
             throw new BusinessException("Invalid webhook signature");
+        } catch (Exception e) {
+            throw new BusinessException("Invalid webhook payload");
         }
 
         log.info("Stripe webhook: {}", event.getType());

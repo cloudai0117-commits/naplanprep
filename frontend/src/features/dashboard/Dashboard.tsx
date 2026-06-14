@@ -34,10 +34,18 @@ export default function Dashboard() {
     const params = new URLSearchParams(location.search)
     if (params.get('checkout') === 'success') {
       setCheckoutSuccess(true)
-      queryClient.invalidateQueries({ queryKey: ['current-subscription'] })
-      queryClient.invalidateQueries({ queryKey: ['available-exams'] })
-      queryClient.invalidateQueries({ queryKey: ['progress-overview'] })
       navigate('/dashboard', { replace: true })
+
+      // Stripe webhooks are async — poll for up to 10s so the plan badge
+      // and exam list update once the webhook lands.
+      let attempt = 0
+      const timer = setInterval(() => {
+        queryClient.invalidateQueries({ queryKey: ['current-subscription'] })
+        queryClient.invalidateQueries({ queryKey: ['available-exams'] })
+        queryClient.invalidateQueries({ queryKey: ['progress-overview'] })
+        if (++attempt >= 5) clearInterval(timer)
+      }, 2000)
+      return () => clearInterval(timer)
     }
   }, [location.search, navigate, queryClient])
 

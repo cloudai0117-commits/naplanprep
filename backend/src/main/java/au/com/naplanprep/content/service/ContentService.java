@@ -7,6 +7,7 @@ import au.com.naplanprep.content.repository.QuestionRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -22,7 +23,18 @@ public class ContentService {
         Integer yearLevel, Question.Domain domain, String topic,
         Integer difficultyBand, Question.QuestionStatus status, Pageable pageable
     ) {
-        return questionRepository.searchQuestions(yearLevel, domain, topic, difficultyBand, status, pageable);
+        Specification<Question> spec = Specification.where(null);
+        if (yearLevel != null)
+            spec = spec.and((r, q, cb) -> cb.equal(r.get("yearLevel"), yearLevel));
+        if (domain != null)
+            spec = spec.and((r, q, cb) -> cb.equal(r.get("domain"), domain));
+        if (topic != null)
+            spec = spec.and((r, q, cb) -> cb.like(cb.lower(r.get("topic")), "%" + topic.toLowerCase() + "%"));
+        if (difficultyBand != null)
+            spec = spec.and((r, q, cb) -> cb.equal(r.get("difficultyBand"), difficultyBand));
+        if (status != null)
+            spec = spec.and((r, q, cb) -> cb.equal(r.get("status"), status));
+        return questionRepository.findAll(spec, pageable);
     }
 
     @Transactional
