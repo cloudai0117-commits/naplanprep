@@ -178,7 +178,6 @@ public class SubscriptionService {
      * to the local DB. Called on the success redirect so the plan updates immediately
      * without waiting for the async webhook to arrive.
      */
-    @Transactional
     public void syncFromCheckoutSession(UUID userId, String sessionId) {
         String secretKey = appProperties.getStripe().getSecretKey();
         if (secretKey == null || secretKey.contains("placeholder") || sessionId == null || sessionId.isBlank()) {
@@ -198,7 +197,8 @@ public class SubscriptionService {
             com.stripe.model.Subscription stripeSub = com.stripe.model.Subscription.retrieve(stripeSubId);
             processStripeSubscription(userId, stripeSub);
             log.info("Synced subscription from checkout session {} for user {}", sessionId, userId);
-        } catch (StripeException e) {
+        } catch (Exception e) {
+            // Best-effort sync — swallow all errors so the controller always returns 200
             log.warn("Could not sync from checkout session {}: {}", sessionId, e.getMessage());
         }
     }
