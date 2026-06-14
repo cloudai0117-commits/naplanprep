@@ -45,7 +45,17 @@ export default function PricingPage() {
       else setCheckoutError('No checkout URL returned. Please try again.')
     },
     onError: (error: any) => {
-      const msg = error?.response?.data?.errors?.[0] || error?.response?.data?.message || 'Checkout failed. Stripe may not be configured in UAT.'
+      console.error('[Checkout] error:', {
+        message: error?.message,
+        code: error?.code,
+        status: error?.response?.status,
+        data: error?.response?.data,
+      })
+      const backendMsg = error?.response?.data?.errors?.[0] || error?.response?.data?.message
+      const networkMsg = !error?.response
+        ? `Cannot reach payment server — check network or CORS (${error?.message ?? 'unknown'})`
+        : null
+      const msg = backendMsg || networkMsg || `Checkout failed (HTTP ${error?.response?.status ?? '?'})`
       setCheckoutError(msg)
     },
   })

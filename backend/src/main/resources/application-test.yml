@@ -18,7 +18,7 @@ app:
     access-token-expiry: 900
     refresh-token-expiry: 604800
   stripe:
-    secret-key: sk_test_dummy
+    secret-key: sk_test_placeholder
     webhook-secret: whsec_dummy
     publishable-key: pk_test_dummy
   cors:
