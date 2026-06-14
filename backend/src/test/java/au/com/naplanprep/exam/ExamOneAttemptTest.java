@@ -70,12 +70,6 @@ class ExamOneAttemptTest {
         when(sessionRepository.existsByUserIdAndExamIdAndStatus(
             userId, examId, ExamSession.SessionStatus.SUBMITTED)).thenReturn(true);
 
-        ExamSession prevSession = new ExamSession();
-        prevSession.setId(UUID.randomUUID());
-        when(sessionRepository.findByUserIdAndExamIdAndStatus(
-            userId, examId, ExamSession.SessionStatus.SUBMITTED))
-            .thenReturn(Optional.of(prevSession));
-
         BusinessException ex = assertThrows(BusinessException.class,
             () -> examService.startAdminExam(examId, userId));
 
