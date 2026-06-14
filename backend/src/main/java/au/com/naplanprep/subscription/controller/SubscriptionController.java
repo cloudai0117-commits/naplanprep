@@ -62,6 +62,16 @@ public class SubscriptionController {
         return ResponseEntity.ok(ApiResponse.success(Map.of("portalUrl", url)));
     }
 
+    @PostMapping("/verify-checkout")
+    public ResponseEntity<ApiResponse<Optional<Subscription>>> verifyCheckout(
+        @RequestBody Map<String, String> body,
+        @AuthenticationPrincipal UserDetails userDetails
+    ) {
+        UUID userId = UUID.fromString(userDetails.getUsername());
+        subscriptionService.syncFromCheckoutSession(userId, body.get("sessionId"));
+        return ResponseEntity.ok(ApiResponse.success(subscriptionService.getCurrentSubscription(userId)));
+    }
+
     @PostMapping("/cancel")
     public ResponseEntity<ApiResponse<Void>> cancel(
         @AuthenticationPrincipal UserDetails userDetails

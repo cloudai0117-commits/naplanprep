@@ -72,7 +72,8 @@ public class SubscriptionService {
             var params = SessionCreateParams.builder()
                 .setMode(SessionCreateParams.Mode.SUBSCRIPTION)
                 .setCustomer(customerId)
-                .setSuccessUrl(successUrl != null ? successUrl : appProperties.getFrontendUrl() + "/dashboard?checkout=success")
+                .setSuccessUrl(successUrl != null ? successUrl
+                    : appProperties.getFrontendUrl() + "/dashboard?checkout=success&session_id={CHECKOUT_SESSION_ID}")
                 .setCancelUrl(cancelUrl != null ? cancelUrl : appProperties.getFrontendUrl() + "/pricing")
                 .addLineItem(SessionCreateParams.LineItem.builder()
                     .setPrice(priceId)
@@ -172,18 +173,55 @@ public class SubscriptionService {
         }
     }
 
+    /**
+     * Proactively fetches the Stripe checkout session and syncs the subscription
+     * to the local DB. Called on the success redirect so the plan updates immediately
+     * without waiting for the async webhook to arrive.
+     */
+    @Transactional
+    public void syncFromCheckoutSession(UUID userId, String sessionId) {
+        String secretKey = appProperties.getStripe().getSecretKey();
+        if (secretKey == null || secretKey.contains("placeholder") || sessionId == null || sessionId.isBlank()) {
+            return;
+        }
+        try {
+            Session session = Session.retrieve(sessionId);
+            if (!"complete".equals(session.getStatus())) {
+                log.warn("Checkout session {} not complete (status={}), skipping sync", sessionId, session.getStatus());
+                return;
+            }
+            String stripeSubId = session.getSubscription();
+            if (stripeSubId == null) {
+                log.warn("No subscription in completed checkout session: {}", sessionId);
+                return;
+            }
+            com.stripe.model.Subscription stripeSub = com.stripe.model.Subscription.retrieve(stripeSubId);
+            processStripeSubscription(userId, stripeSub);
+            log.info("Synced subscription from checkout session {} for user {}", sessionId, userId);
+        } catch (StripeException e) {
+            log.warn("Could not sync from checkout session {}: {}", sessionId, e.getMessage());
+        }
+    }
+
     private void handleSubscriptionUpsert(Event event) {
         var stripeSubOpt = event.getDataObjectDeserializer().getObject();
         if (stripeSubOpt.isEmpty()) return;
 
         com.stripe.model.Subscription stripeSub = (com.stripe.model.Subscription) stripeSubOpt.get();
         String userId = stripeSub.getMetadata().get("userId");
-        String planSlug = stripeSub.getMetadata().get("planSlug");
 
         if (userId == null) {
             log.warn("Missing userId metadata in subscription: {}", stripeSub.getId());
             return;
         }
+
+        processStripeSubscription(UUID.fromString(userId), stripeSub);
+    }
+
+    // Determine the plan and persist the subscription record — shared by webhook handler
+    // and proactive checkout-session sync so both paths stay in sync.
+    private void processStripeSubscription(UUID userId, com.stripe.model.Subscription stripeSub) {
+        String planSlug = stripeSub.getMetadata() != null ? stripeSub.getMetadata().get("planSlug") : null;
 
         // Determine plan from price ID first — this handles portal upgrades where
         // the metadata planSlug still reflects the original plan (metadata is not
@@ -195,7 +233,6 @@ public class SubscriptionService {
             Optional<Plan> byMonthly = planRepository.findByStripeMonthlyPriceId(priceId);
             if (byMonthly.isPresent()) {
                 plan = byMonthly.get();
-                billingInterval = Subscription.BillingInterval.MONTHLY;
             } else {
                 Optional<Plan> byAnnual = planRepository.findByStripeAnnualPriceId(priceId);
                 if (byAnnual.isPresent()) {
@@ -215,7 +252,6 @@ public class SubscriptionService {
             return;
         }
 
-        UUID userUUID = UUID.fromString(userId);
         Subscription.SubscriptionStatus status = mapStripeStatus(stripeSub.getStatus());
 
         Optional<Subscription> existing = subscriptionRepository.findByStripeSubscriptionId(stripeSub.getId());
@@ -224,7 +260,7 @@ public class SubscriptionService {
             sub = existing.get();
         } else {
             sub = Subscription.builder()
-                .userId(userUUID)
+                .userId(userId)
                 .plan(plan)
                 .stripeSubscriptionId(stripeSub.getId())
                 .build();

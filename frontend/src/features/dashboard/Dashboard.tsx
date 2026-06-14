@@ -36,13 +36,28 @@ export default function Dashboard() {
       setCheckoutSuccess(true)
       navigate('/dashboard', { replace: true })
 
-      // Stripe webhooks are async — poll for up to 10s so the plan badge
-      // and exam list update once the webhook lands.
-      let attempt = 0
-      const timer = setInterval(() => {
+      const sessionId = params.get('session_id')
+      const invalidateAll = () => {
         queryClient.invalidateQueries({ queryKey: ['current-subscription'] })
         queryClient.invalidateQueries({ queryKey: ['available-exams'] })
         queryClient.invalidateQueries({ queryKey: ['progress-overview'] })
+      }
+
+      // Proactively sync the subscription from Stripe so the plan badge updates
+      // immediately — no need to wait for the async webhook to arrive.
+      if (sessionId) {
+        apiClient.post('/subscriptions/verify-checkout', { sessionId })
+          .then(invalidateAll)
+          .catch(invalidateAll) // fall back to cache invalidation even if sync fails
+      } else {
+        invalidateAll()
+      }
+
+      // Also poll for up to 10s in case the backend sync lags or the session_id
+      // was not present (older checkout sessions without the param).
+      let attempt = 0
+      const timer = setInterval(() => {
+        invalidateAll()
         if (++attempt >= 5) clearInterval(timer)
       }, 2000)
       return () => clearInterval(timer)
