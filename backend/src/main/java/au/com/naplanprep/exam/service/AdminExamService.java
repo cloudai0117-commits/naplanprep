@@ -209,7 +209,8 @@ public class AdminExamService {
     @Transactional
     public Map<String, Integer> resetTestUserSessions() {
         List<String> testEmails = List.of(
-            "student1@test.com", "student2@test.com", "parent1@test.com"
+            "student1@test.com", "student2@test.com", "parent1@test.com",
+            "admin@naplanprep.com.au"
         );
         int resultCount = 0;
         int sessionCount = 0;
