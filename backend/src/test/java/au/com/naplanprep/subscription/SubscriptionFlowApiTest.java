@@ -171,7 +171,7 @@ class SubscriptionFlowApiTest {
         mockMvc.perform(post("/v1/auth/register")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("""
-                        {"firstName":"L","lastName":"O","email":"%s",\
+                        {"firstName":"Lo","lastName":"Ok","email":"%s",\
                         "password":"%s","yearLevel":3}""".formatted(email, pw)))
                 .andExpect(status().isCreated());
 
@@ -194,7 +194,7 @@ class SubscriptionFlowApiTest {
         mockMvc.perform(post("/v1/auth/register")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("""
-                        {"firstName":"X","lastName":"Y","email":"%s",\
+                        {"firstName":"Xy","lastName":"Yz","email":"%s",\
                         "password":"Password1","yearLevel":5}""".formatted(email)))
                 .andExpect(status().isCreated());
 
