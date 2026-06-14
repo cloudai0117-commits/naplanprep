@@ -1,6 +1,8 @@
 package au.com.naplanprep.content;
 
 import au.com.naplanprep.admin.service.AdminService;
+import au.com.naplanprep.auth.entity.User;
+import au.com.naplanprep.auth.repository.UserRepository;
 import au.com.naplanprep.content.dto.QuestionRequest;
 import au.com.naplanprep.content.entity.Question;
 import au.com.naplanprep.content.repository.QuestionRepository;
@@ -37,12 +39,19 @@ class QuestionAdminIntegrationTest {
     @Autowired private ContentService contentService;
     @Autowired private AdminService adminService;
     @Autowired private QuestionRepository questionRepository;
+    @Autowired private UserRepository userRepository;
 
     private UUID creatorId;
 
     @BeforeEach
     void setUp() {
-        creatorId = UUID.randomUUID();
+        // questions.created_by is a FK to users.id — must use a real persisted user
+        User creator = new User();
+        creator.setEmail("creator-" + UUID.randomUUID() + "@test.com");
+        creator.setPassword("hashed");
+        creator.setRole(User.Role.ADMIN);
+        creator.setStatus(User.UserStatus.ACTIVE);
+        creatorId = userRepository.save(creator).getId();
     }
 
     private QuestionRequest req(int year, Question.Domain domain, String topic) {
