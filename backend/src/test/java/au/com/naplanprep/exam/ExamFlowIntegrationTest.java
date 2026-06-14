@@ -15,10 +15,9 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
-import org.springframework.http.HttpStatus;
+import au.com.naplanprep.common.exception.BusinessException;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.web.server.ResponseStatusException;
 import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
@@ -127,10 +126,10 @@ class ExamFlowIntegrationTest {
             userId, exam.getId(), ExamSession.SessionStatus.IN_PROGRESS).orElseThrow();
         examService.submitExam(session.getId(), userId);
 
-        ResponseStatusException ex = assertThrows(ResponseStatusException.class,
+        BusinessException ex = assertThrows(BusinessException.class,
             () -> examService.startAdminExam(exam.getId(), userId));
 
-        assertEquals(HttpStatus.CONFLICT, ex.getStatusCode());
+        assertTrue(ex.getMessage().contains("already completed"));
     }
 
     @Test

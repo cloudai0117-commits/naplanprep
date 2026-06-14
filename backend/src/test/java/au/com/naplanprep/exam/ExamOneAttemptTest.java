@@ -16,8 +16,8 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.http.HttpStatus;
-import org.springframework.web.server.ResponseStatusException;
+import au.com.naplanprep.common.exception.BusinessException;
+import org.springframework.security.access.AccessDeniedException;
 
 import java.time.Instant;
 import java.util.List;
@@ -76,10 +76,10 @@ class ExamOneAttemptTest {
             userId, examId, ExamSession.SessionStatus.SUBMITTED))
             .thenReturn(Optional.of(prevSession));
 
-        ResponseStatusException ex = assertThrows(ResponseStatusException.class,
+        BusinessException ex = assertThrows(BusinessException.class,
             () -> examService.startAdminExam(examId, userId));
 
-        assertEquals(HttpStatus.CONFLICT, ex.getStatusCode());
+        assertTrue(ex.getMessage().contains("already completed"));
         verify(sessionRepository, never()).save(any());
     }
 
@@ -131,10 +131,9 @@ class ExamOneAttemptTest {
         when(examRepository.findById(examId)).thenReturn(Optional.of(publishedExam));
         when(subscriptionRepository.findFirstByUserIdAndStatusInOrderByCreatedAtDesc(any(), any())).thenReturn(Optional.empty());
 
-        ResponseStatusException ex = assertThrows(ResponseStatusException.class,
+        AccessDeniedException ex = assertThrows(AccessDeniedException.class,
             () -> examService.startAdminExam(examId, userId));
 
-        assertEquals(HttpStatus.FORBIDDEN, ex.getStatusCode());
         assertTrue(ex.getMessage().contains("Upgrade"));
     }
 
