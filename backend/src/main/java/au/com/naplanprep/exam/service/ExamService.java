@@ -49,16 +49,27 @@ public class ExamService {
     @Transactional
     public ExamSession startExam(UUID userId, StartExamRequest req) {
         int count = req.resolvedQuestionCount();
+        Question.Domain domain = req.domain() != null ? req.domain() : Question.Domain.NUMERACY;
+        org.springframework.data.domain.Pageable pageable =
+            org.springframework.data.domain.PageRequest.of(0, count);
+
         List<Question> questions;
-        if (req.domain() != null) {
-            questions = questionRepository.findRandomByYearLevelAndDomain(
-                req.yearLevel(), req.domain(),
-                org.springframework.data.domain.PageRequest.of(0, count));
+        if (req.examType() == ExamSession.ExamType.PRACTICE) {
+            // Rotate questions so users encounter new ones each practice attempt.
+            // Fall back to the full pool only when all available questions are exhausted.
+            List<UUID> seenIds = answerRepository.findSeenQuestionIdsByUserId(userId);
+            if (!seenIds.isEmpty()) {
+                questions = questionRepository.findUnseenRandom(req.yearLevel(), domain, seenIds, pageable);
+                if (questions.size() < count) {
+                    questions = questionRepository.findRandomByYearLevelAndDomain(req.yearLevel(), domain, pageable);
+                }
+            } else {
+                questions = questionRepository.findRandomByYearLevelAndDomain(req.yearLevel(), domain, pageable);
+            }
         } else {
-            questions = questionRepository.findRandomByYearLevelAndDomain(
-                req.yearLevel(), Question.Domain.NUMERACY,
-                org.springframework.data.domain.PageRequest.of(0, count));
+            questions = questionRepository.findRandomByYearLevelAndDomain(req.yearLevel(), domain, pageable);
         }
+
         if (questions.isEmpty()) {
             throw new BusinessException("No questions available for the selected criteria");
         }

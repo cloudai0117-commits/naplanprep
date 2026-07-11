@@ -63,7 +63,11 @@ export default function PricingPage() {
   const { mutate: openPortal } = useMutation({
     mutationFn: () => apiClient.post('/subscriptions/portal'),
     onSuccess: (res) => {
-      window.open(res.data.data.portalUrl, '_blank')
+      const url = res.data.data?.portalUrl
+      if (url) window.location.href = url
+    },
+    onError: () => {
+      setCheckoutError('Unable to open billing portal. Please try again.')
     },
   })
 

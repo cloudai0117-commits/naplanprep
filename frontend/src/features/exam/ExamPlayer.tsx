@@ -336,7 +336,7 @@ export default function ExamPlayer() {
                 onClick={() => setShowSubmitModal(false)}
                 className="btn-secondary flex-1"
               >
-                Keep going
+                {answeredCount === questions.length ? 'Review answers' : 'Keep going'}
               </button>
               <button
                 data-testid="confirm-submit-btn"

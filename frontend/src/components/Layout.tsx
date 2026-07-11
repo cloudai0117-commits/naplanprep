@@ -1,5 +1,7 @@
 import { Outlet, Link, useNavigate, useLocation } from 'react-router-dom'
+import { useEffect } from 'react'
 import { useAuthStore } from '@/store/authStore'
+import { useQueryClient } from '@tanstack/react-query'
 import apiClient from '@/api/client'
 
 const navItems = [
@@ -10,18 +12,40 @@ const navItems = [
 ]
 
 export default function Layout() {
-  const { user, logout } = useAuthStore()
+  const { user, isAuthenticated, logout } = useAuthStore()
   const navigate = useNavigate()
   const location = useLocation()
+  const queryClient = useQueryClient()
 
+  // Fix 6: clear all cached data on logout so the next user never sees stale data
   const handleLogout = async () => {
     try {
       await apiClient.post('/auth/logout')
     } finally {
+      queryClient.clear()
       logout()
       navigate('/login')
     }
   }
+
+  // Fix 4: sync logout across browser tabs via localStorage storage events
+  useEffect(() => {
+    const handleStorageChange = (e: StorageEvent) => {
+      if (e.key !== 'naplanprep-auth') return
+      try {
+        const newState = e.newValue ? JSON.parse(e.newValue) : null
+        if (!newState?.state?.isAuthenticated && isAuthenticated) {
+          queryClient.clear()
+          logout()
+          navigate('/login')
+        }
+      } catch {
+        // ignore malformed storage values
+      }
+    }
+    window.addEventListener('storage', handleStorageChange)
+    return () => window.removeEventListener('storage', handleStorageChange)
+  }, [isAuthenticated, logout, navigate, queryClient])
 
   return (
     <div className="min-h-screen flex flex-col">
