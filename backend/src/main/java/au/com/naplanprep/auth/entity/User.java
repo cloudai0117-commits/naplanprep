@@ -55,6 +55,7 @@ public class User {
     private Instant lockedUntil;
 
     @CreationTimestamp
+    @Column(updatable = false)
     private Instant createdAt;
 
     @UpdateTimestamp
