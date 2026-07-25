@@ -44,7 +44,7 @@ public class AdminExamService {
             .description(req.description())
             .yearLevel(req.yearLevel())
             .domain(req.domain())
-            .packageTier(req.packageTier())
+            .tag(req.tag())
             .timeLimitSeconds(req.timeLimitSeconds())
             .availableFrom(req.availableFrom())
             .availableUntil(req.availableUntil())
@@ -64,7 +64,7 @@ public class AdminExamService {
         exam.setDescription(req.description());
         exam.setYearLevel(req.yearLevel());
         exam.setDomain(req.domain());
-        exam.setPackageTier(req.packageTier());
+        exam.setTag(req.tag());
         exam.setTimeLimitSeconds(req.timeLimitSeconds());
         exam.setAvailableFrom(req.availableFrom());
         exam.setAvailableUntil(req.availableUntil());
@@ -91,7 +91,7 @@ public class AdminExamService {
             m.put("description", e.getDescription());
             m.put("yearLevel", e.getYearLevel());
             m.put("domain", e.getDomain());
-            m.put("packageTier", e.getPackageTier());
+            m.put("tag", e.getTag());
             m.put("timeLimitSeconds", e.getTimeLimitSeconds());
             m.put("availableFrom", e.getAvailableFrom());
             m.put("availableUntil", e.getAvailableUntil());
@@ -115,7 +115,7 @@ public class AdminExamService {
         result.put("description", exam.getDescription());
         result.put("yearLevel", exam.getYearLevel());
         result.put("domain", exam.getDomain());
-        result.put("packageTier", exam.getPackageTier());
+        result.put("tag", exam.getTag());
         result.put("timeLimitSeconds", exam.getTimeLimitSeconds());
         result.put("availableFrom", exam.getAvailableFrom());
         result.put("availableUntil", exam.getAvailableUntil());

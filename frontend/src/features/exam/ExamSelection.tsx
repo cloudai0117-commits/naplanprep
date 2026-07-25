@@ -19,10 +19,10 @@ const domains = [
   { value: 'GRAMMAR_PUNCTUATION', label: 'Grammar & Punctuation' },
 ]
 
-const TIER_LABELS: Record<string, string> = {
-  FREE: 'Free',
-  STANDARD: 'Premium',
-  PREMIUM: 'Advanced',
+const TAG_LABELS: Record<string, string> = {
+  BASIC: 'Basic',
+  ADVANCED: 'Advanced',
+  PRO: 'Pro',
 }
 
 export default function ExamSelection() {
@@ -54,17 +54,17 @@ export default function ExamSelection() {
     },
   })
 
-  // Group available exams by tier
-  const examsByTier: Record<string, any[]> = {}
+  // Group available exams by tag
+  const examsByTag: Record<string, any[]> = {}
   if (availableExams) {
     for (const exam of availableExams) {
-      const tier = exam.requiredTier || 'FREE'
-      if (!examsByTier[tier]) examsByTier[tier] = []
-      examsByTier[tier].push(exam)
+      const tag = exam.tag || 'BASIC'
+      if (!examsByTag[tag]) examsByTag[tag] = []
+      examsByTag[tag].push(exam)
     }
   }
 
-  const tierOrder = ['FREE', 'STANDARD', 'PREMIUM']
+  const tagOrder = ['BASIC', 'ADVANCED', 'PRO']
 
   return (
     <div className="max-w-3xl mx-auto space-y-8">
@@ -125,16 +125,16 @@ export default function ExamSelection() {
           <div className="card text-center py-8 text-gray-500 text-sm">No exams available yet.</div>
         )}
 
-        {tierOrder.map((tier) => {
-          const exams = examsByTier[tier]
+        {tagOrder.map((tag) => {
+          const exams = examsByTag[tag]
           if (!exams || exams.length === 0) return null
           return (
-            <div key={tier}>
+            <div key={tag}>
               <div className="flex items-center gap-2 mb-3">
-                <h3 className="text-base font-semibold text-gray-800">{TIER_LABELS[tier] || tier}</h3>
-                {tier !== 'FREE' && (
+                <h3 className="text-base font-semibold text-gray-800">{TAG_LABELS[tag] || tag}</h3>
+                {tag !== 'BASIC' && (
                   <span className="text-xs px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 font-medium">
-                    {tier === 'STANDARD' ? 'Premium' : 'Advanced'} only
+                    {TAG_LABELS[tag]} only
                   </span>
                 )}
               </div>

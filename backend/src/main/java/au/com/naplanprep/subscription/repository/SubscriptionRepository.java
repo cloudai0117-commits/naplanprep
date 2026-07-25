@@ -18,6 +18,8 @@ public interface SubscriptionRepository extends JpaRepository<Subscription, UUID
      *  Uses findFirst to handle edge cases where duplicate rows exist. */
     Optional<Subscription> findFirstByUserIdAndStatusInOrderByCreatedAtDesc(UUID userId, List<Subscription.SubscriptionStatus> statuses);
 
+    List<Subscription> findAllByUserIdAndStatusIn(UUID userId, List<Subscription.SubscriptionStatus> statuses);
+
     Optional<Subscription> findByStripeSubscriptionId(String stripeSubscriptionId);
     Page<Subscription> findAllByOrderByCreatedAtDesc(Pageable pageable);
     long countByStatus(Subscription.SubscriptionStatus status);

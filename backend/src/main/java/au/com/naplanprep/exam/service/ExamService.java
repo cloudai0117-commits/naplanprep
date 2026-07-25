@@ -1,5 +1,6 @@
 package au.com.naplanprep.exam.service;
 
+import au.com.naplanprep.auth.entity.User;
 import au.com.naplanprep.common.exception.BusinessException;
 import au.com.naplanprep.common.exception.ResourceNotFoundException;
 import au.com.naplanprep.content.entity.Question;
@@ -8,8 +9,6 @@ import au.com.naplanprep.exam.dto.*;
 import au.com.naplanprep.exam.entity.*;
 import au.com.naplanprep.exam.repository.*;
 import au.com.naplanprep.auth.repository.UserRepository;
-import au.com.naplanprep.subscription.entity.Subscription;
-import au.com.naplanprep.subscription.repository.SubscriptionRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
@@ -39,7 +38,6 @@ public class ExamService {
     private final ExamRepository examRepository;
     private final ExamQuestionRepository examQuestionRepository;
     private final QuestionRepository questionRepository;
-    private final SubscriptionRepository subscriptionRepository;
     private final UserRepository userRepository;
 
     // ─────────────────────────────────────────────────────────────
@@ -99,7 +97,7 @@ public class ExamService {
 
     @Transactional(readOnly = true)
     public List<AvailableExamResponse> getAvailableExams(UUID userId) {
-        Exam.PackageTier userTier = resolveUserTier(userId);
+        Set<ExamTag> userTags = resolveUserTags(userId);
         List<Exam> all = examRepository.findAllPublished();
         Instant now = Instant.now();
 
@@ -123,12 +121,12 @@ public class ExamService {
                     .map(ExamSession::getId).orElse(null);
             }
 
-            String availability = computeAvailability(exam, userTier, now);
+            String availability = computeAvailability(exam, userTags, now);
             return new AvailableExamResponse(
                 exam.getId(), exam.getTitle(), exam.getDescription(),
                 exam.getDomain(), exam.getYearLevel(), exam.getTimeLimitSeconds(),
                 exam.getAvailableFrom(), exam.getAvailableUntil(),
-                qCount, exam.getPackageTier(), availability,
+                qCount, exam.getTag(), availability,
                 attempted, completedSessionId
             );
         }).filter(java.util.Objects::nonNull).toList();
@@ -144,9 +142,9 @@ public class ExamService {
         }
 
         // Entitlement check
-        Exam.PackageTier userTier = resolveUserTier(userId);
-        if (!userTier.satisfies(exam.getPackageTier())) {
-            throw new AccessDeniedException("Upgrade to " + exam.getPackageTier() + " to access this exam");
+        Set<ExamTag> userTags = resolveUserTags(userId);
+        if (!userTags.contains(exam.getTag())) {
+            throw new AccessDeniedException("Upgrade to " + exam.getTag() + " to access this exam");
         }
 
         // Time window check
@@ -444,19 +442,14 @@ public class ExamService {
             .build());
     }
 
-    private Exam.PackageTier resolveUserTier(UUID userId) {
-        return subscriptionRepository.findFirstByUserIdAndStatusInOrderByCreatedAtDesc(
-                userId, List.of(Subscription.SubscriptionStatus.ACTIVE, Subscription.SubscriptionStatus.TRIALING))
-            .map(sub -> {
-                String name = sub.getPlan().getName().toUpperCase();
-                try { return Exam.PackageTier.valueOf(name); }
-                catch (Exception e) { return Exam.PackageTier.FREE; }
-            })
-            .orElse(Exam.PackageTier.FREE);
+    private Set<ExamTag> resolveUserTags(UUID userId) {
+        return userRepository.findById(userId)
+            .map(User::getTags)
+            .orElse(Set.of(ExamTag.BASIC));
     }
 
-    private String computeAvailability(Exam exam, Exam.PackageTier userTier, Instant now) {
-        if (!userTier.satisfies(exam.getPackageTier())) return "UPGRADE_REQUIRED";
+    private String computeAvailability(Exam exam, Set<ExamTag> userTags, Instant now) {
+        if (!userTags.contains(exam.getTag())) return "UPGRADE_REQUIRED";
         if (exam.getAvailableFrom() != null && now.isBefore(exam.getAvailableFrom())) return "UPCOMING";
         if (exam.getAvailableUntil() != null && now.isAfter(exam.getAvailableUntil())) return "EXPIRED";
         return "AVAILABLE";

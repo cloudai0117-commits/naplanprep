@@ -1,5 +1,6 @@
 package au.com.naplanprep.auth.entity;
 
+import au.com.naplanprep.exam.entity.ExamTag;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.*;
 import lombok.*;
@@ -7,6 +8,8 @@ import org.hibernate.annotations.CreationTimestamp;
 import org.hibernate.annotations.UpdateTimestamp;
 
 import java.time.Instant;
+import java.util.HashSet;
+import java.util.Set;
 import java.util.UUID;
 
 @Entity
@@ -39,6 +42,13 @@ public class User {
     private UserStatus status = UserStatus.ACTIVE;
 
     private String stripeCustomerId;
+
+    @ElementCollection(fetch = FetchType.EAGER)
+    @CollectionTable(name = "user_tags", joinColumns = @JoinColumn(name = "user_id"))
+    @Column(name = "tag")
+    @Enumerated(EnumType.STRING)
+    @Builder.Default
+    private Set<ExamTag> tags = new HashSet<>(Set.of(ExamTag.BASIC));
 
     private Integer failedLoginAttempts;
 

@@ -8,6 +8,7 @@ import au.com.naplanprep.content.repository.QuestionRepository;
 import au.com.naplanprep.exam.dto.AvailableExamResponse;
 import au.com.naplanprep.exam.entity.Exam;
 import au.com.naplanprep.exam.entity.ExamQuestion;
+import au.com.naplanprep.exam.entity.ExamTag;
 import au.com.naplanprep.exam.repository.ExamQuestionRepository;
 import au.com.naplanprep.exam.repository.ExamRepository;
 import au.com.naplanprep.exam.service.ExamService;
@@ -31,9 +32,11 @@ import org.testcontainers.junit.jupiter.Testcontainers;
 
 import java.math.BigDecimal;
 import java.time.Instant;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -73,14 +76,14 @@ class PlanUpgradeIntegrationTest {
         student.setStatus(User.UserStatus.ACTIVE);
         studentId = userRepository.save(student).getId();
 
-        standardPlan = planRepository.findBySlug("standard").orElseGet(() ->
+        standardPlan = planRepository.findBySlug("advanced").orElseGet(() ->
             planRepository.save(Plan.builder()
-                .name("Standard").slug("standard")
+                .name("Advanced").slug("advanced")
                 .monthlyPrice(new BigDecimal("9.99")).active(true).build()));
 
-        premiumPlan = planRepository.findBySlug("premium").orElseGet(() ->
+        premiumPlan = planRepository.findBySlug("pro").orElseGet(() ->
             planRepository.save(Plan.builder()
-                .name("Premium").slug("premium")
+                .name("Pro").slug("pro")
                 .monthlyPrice(new BigDecimal("19.99")).active(true).build()));
 
         Question q = new Question();
@@ -96,8 +99,8 @@ class PlanUpgradeIntegrationTest {
         q = questionRepository.save(q);
 
         standardExam = examRepository.save(Exam.builder()
-            .title("Standard Exam").yearLevel(5).domain(Question.Domain.NUMERACY)
-            .packageTier(Exam.PackageTier.STANDARD).timeLimitSeconds(1800)
+            .title("Advanced Exam").yearLevel(5).domain(Question.Domain.NUMERACY)
+            .tag(ExamTag.ADVANCED).timeLimitSeconds(1800)
             .status(Exam.ExamStatus.PUBLISHED)
             .availableFrom(Instant.now().minusSeconds(3600))
             .availableUntil(Instant.now().plusSeconds(3600))
@@ -105,13 +108,21 @@ class PlanUpgradeIntegrationTest {
         linkQuestion(standardExam, q);
 
         premiumExam = examRepository.save(Exam.builder()
-            .title("Premium Exam").yearLevel(5).domain(Question.Domain.NUMERACY)
-            .packageTier(Exam.PackageTier.PREMIUM).timeLimitSeconds(1800)
+            .title("Pro Exam").yearLevel(5).domain(Question.Domain.NUMERACY)
+            .tag(ExamTag.PRO).timeLimitSeconds(1800)
             .status(Exam.ExamStatus.PUBLISHED)
             .availableFrom(Instant.now().minusSeconds(3600))
             .availableUntil(Instant.now().plusSeconds(3600))
             .build());
         linkQuestion(premiumExam, q);
+    }
+
+    private void giveUserTags(ExamTag... tags) {
+        User u = userRepository.findById(studentId).orElseThrow();
+        Set<ExamTag> tagSet = new HashSet<>(Set.of(ExamTag.BASIC));
+        for (ExamTag t : tags) tagSet.add(t);
+        u.setTags(tagSet);
+        userRepository.save(u);
     }
 
     private void linkQuestion(Exam exam, Question q) {
@@ -139,6 +150,7 @@ class PlanUpgradeIntegrationTest {
     @Test
     void standardSubscriber_seesUpgradeRequiredForPremiumExam() {
         subscriptionRepository.save(activeSub(standardPlan, "sub_std_entitlement"));
+        giveUserTags(ExamTag.ADVANCED); // user has BASIC + ADVANCED, not PRO
 
         List<AvailableExamResponse> exams = examService.getAvailableExams(studentId);
         AvailableExamResponse pExam = exams.stream()
@@ -149,6 +161,7 @@ class PlanUpgradeIntegrationTest {
     @Test
     void standardSubscriber_canAccessStandardExam() {
         subscriptionRepository.save(activeSub(standardPlan, "sub_std_access"));
+        giveUserTags(ExamTag.ADVANCED);
 
         List<AvailableExamResponse> exams = examService.getAvailableExams(studentId);
         AvailableExamResponse sExam = exams.stream()
@@ -160,7 +173,7 @@ class PlanUpgradeIntegrationTest {
 
     @Test
     void afterUpgrade_premiumExamBecomesAvailable() {
-        // Old Standard subscription cancelled (simulates Stripe cancellation on upgrade)
+        // Old Advanced subscription cancelled (simulates Stripe cancellation on upgrade)
         Subscription cancelled = Subscription.builder()
             .userId(studentId).plan(standardPlan)
             .status(Subscription.SubscriptionStatus.CANCELLED)
@@ -171,8 +184,9 @@ class PlanUpgradeIntegrationTest {
             .currentPeriodEnd(Instant.now().plusSeconds(30L * 24 * 3600))
             .build();
         subscriptionRepository.save(cancelled);
-        // New Premium subscription created by Stripe webhook
+        // New Pro subscription created by Stripe webhook
         subscriptionRepository.save(activeSub(premiumPlan, "sub_prem_unlocked"));
+        giveUserTags(ExamTag.PRO); // user now has BASIC + PRO
 
         List<AvailableExamResponse> exams = examService.getAvailableExams(studentId);
         AvailableExamResponse pExam = exams.stream()
@@ -183,6 +197,7 @@ class PlanUpgradeIntegrationTest {
     @Test
     void afterUpgrade_standardExamRemainsAvailable() {
         subscriptionRepository.save(activeSub(premiumPlan, "sub_prem_both"));
+        giveUserTags(ExamTag.ADVANCED, ExamTag.PRO); // PRO user also gets ADVANCED explicitly
 
         List<AvailableExamResponse> exams = examService.getAvailableExams(studentId);
         AvailableExamResponse sExam = exams.stream()
@@ -197,7 +212,7 @@ class PlanUpgradeIntegrationTest {
 
         Optional<Subscription> current = subscriptionService.getCurrentSubscription(studentId);
         assertTrue(current.isPresent());
-        assertEquals("premium", current.get().getPlan().getSlug());
+        assertEquals("pro", current.get().getPlan().getSlug());
         assertEquals(Subscription.SubscriptionStatus.ACTIVE, current.get().getStatus());
     }
 
@@ -210,7 +225,7 @@ class PlanUpgradeIntegrationTest {
 
         Page<Map<String, Object>> page = adminService.getSubscriptionList(Pageable.ofSize(200));
         boolean found = page.getContent().stream()
-            .anyMatch(s -> studentId.equals(s.get("userId")) && "Premium".equals(s.get("planName")));
+            .anyMatch(s -> studentId.equals(s.get("userId")) && "Pro".equals(s.get("planName")));
         assertTrue(found, "Admin subscription list must show the Premium plan for the upgraded student");
     }
 
@@ -266,7 +281,7 @@ class PlanUpgradeIntegrationTest {
 
         Optional<Subscription> created = subscriptionRepository.findByStripeSubscriptionId(stripeSubId);
         assertTrue(created.isPresent(), "Subscription record should be created by webhook handler");
-        assertEquals("premium", created.get().getPlan().getSlug());
+        assertEquals("pro", created.get().getPlan().getSlug());
         assertEquals(Subscription.SubscriptionStatus.ACTIVE, created.get().getStatus());
     }
 
@@ -310,7 +325,7 @@ class PlanUpgradeIntegrationTest {
 
         Subscription updated = subscriptionRepository.findByStripeSubscriptionId("sub_existing_to_upgrade")
             .orElseThrow();
-        assertEquals("premium", updated.getPlan().getSlug(),
-            "Webhook should update the existing subscription's plan to Premium based on the new price ID");
+        assertEquals("pro", updated.getPlan().getSlug(),
+            "Webhook should update the existing subscription's plan to Pro based on the new price ID");
     }
 }

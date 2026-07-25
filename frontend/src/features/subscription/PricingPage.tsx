@@ -126,7 +126,7 @@ export default function PricingPage() {
             ? (plan.annualPrice / 12).toFixed(2)
             : plan.monthlyPrice.toFixed(2)
           const isCurrentPlan = currentSub?.plan?.id === plan.id
-          const isPremium = plan.slug === 'premium'
+          const isPremium = plan.slug === 'pro'
 
           return (
             <div
@@ -188,7 +188,7 @@ export default function PricingPage() {
                     Up to {plan.maxChildren} children
                   </li>
                 )}
-                {plan.slug === 'premium' && (
+                {plan.slug === 'pro' && (
                   <li className="flex items-start text-blue-600 font-medium">
                     <span className="mr-2 mt-0.5">🎁</span>
                     7-day free trial

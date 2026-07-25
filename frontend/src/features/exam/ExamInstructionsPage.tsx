@@ -101,7 +101,7 @@ export default function ExamInstructionsPage() {
             <div className="text-xs text-gray-500 mt-1">Time Limit</div>
           </div>
           <div className="text-center">
-            <div className="text-2xl font-bold text-gray-900">{exam.requiredTier}</div>
+            <div className="text-2xl font-bold text-gray-900">{exam.tag}</div>
             <div className="text-xs text-gray-500 mt-1">Required Tier</div>
           </div>
         </div>
@@ -145,7 +145,7 @@ export default function ExamInstructionsPage() {
         ) : exam.availability === 'UPGRADE_REQUIRED' ? (
           <div className="space-y-3">
             <div className="p-3 bg-yellow-50 border border-yellow-200 rounded-lg text-sm text-yellow-700">
-              This exam requires a <strong>{exam.requiredTier}</strong> subscription.
+              This exam requires a <strong>{exam.tag}</strong> subscription.
             </div>
             <button
               onClick={() => navigate('/pricing')}

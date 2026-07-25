@@ -5,6 +5,7 @@ import au.com.naplanprep.auth.repository.UserRepository;
 import au.com.naplanprep.common.exception.BusinessException;
 import au.com.naplanprep.common.exception.ResourceNotFoundException;
 import au.com.naplanprep.config.AppProperties;
+import au.com.naplanprep.exam.entity.ExamTag;
 import au.com.naplanprep.subscription.entity.Plan;
 import au.com.naplanprep.subscription.entity.Subscription;
 import au.com.naplanprep.subscription.repository.PlanRepository;
@@ -25,8 +26,10 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 
 @Slf4j
@@ -80,7 +83,7 @@ public class SubscriptionService {
                     .setQuantity(1L)
                     .build())
                 .setSubscriptionData(SessionCreateParams.SubscriptionData.builder()
-                    .setTrialPeriodDays("premium".equals(planSlug) ? 7L : null)
+                    .setTrialPeriodDays("pro".equals(planSlug) || "premium".equals(planSlug) ? 7L : null)
                     .putMetadata("userId", userId.toString())
                     .putMetadata("planSlug", planSlug)
                     .build())
@@ -276,6 +279,7 @@ public class SubscriptionService {
         }
 
         subscriptionRepository.save(sub);
+        syncUserTagsFromSubscriptions(userId);
     }
 
     private void handleSubscriptionDeleted(Event event) {
@@ -286,6 +290,7 @@ public class SubscriptionService {
             sub.setStatus(Subscription.SubscriptionStatus.CANCELLED);
             sub.setCancelledAt(Instant.now());
             subscriptionRepository.save(sub);
+            syncUserTagsFromSubscriptions(sub.getUserId());
         });
     }
 
@@ -301,6 +306,29 @@ public class SubscriptionService {
             subscriptionRepository.save(sub);
             log.warn("Payment failed for subscription: {}, user: {}", stripeSubId, sub.getUserId());
         });
+    }
+
+    private void syncUserTagsFromSubscriptions(UUID userId) {
+        userRepository.findById(userId).ifPresent(user -> {
+            Set<ExamTag> tags = new HashSet<>();
+            tags.add(ExamTag.BASIC);
+            subscriptionRepository.findAllByUserIdAndStatusIn(userId,
+                List.of(Subscription.SubscriptionStatus.ACTIVE, Subscription.SubscriptionStatus.TRIALING))
+                .forEach(sub -> {
+                    ExamTag tag = resolvePlanToTag(sub.getPlan());
+                    if (tag != null) tags.add(tag);
+                });
+            user.setTags(tags);
+            userRepository.save(user);
+        });
+    }
+
+    private ExamTag resolvePlanToTag(Plan plan) {
+        return switch (plan.getName().toUpperCase()) {
+            case "ADVANCED", "STANDARD", "ADVANCE" -> ExamTag.ADVANCED;
+            case "PRO", "PREMIUM", "FAMILY" -> ExamTag.PRO;
+            default -> null;
+        };
     }
 
     private String ensureStripeCustomer(User user) throws StripeException {

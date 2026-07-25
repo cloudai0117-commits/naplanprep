@@ -1,76 +1,56 @@
 package au.com.naplanprep.exam;
 
-import au.com.naplanprep.exam.entity.Exam;
+import au.com.naplanprep.exam.entity.ExamTag;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.params.ParameterizedTest;
-import org.junit.jupiter.params.provider.CsvSource;
+
+import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.*;
 
 class ExamEntitlementTest {
 
     @Test
-    void free_tier_can_only_access_free_exams() {
-        assertTrue(Exam.PackageTier.FREE.satisfies(Exam.PackageTier.FREE));
-        assertFalse(Exam.PackageTier.FREE.satisfies(Exam.PackageTier.STANDARD));
-        assertFalse(Exam.PackageTier.FREE.satisfies(Exam.PackageTier.PREMIUM));
-        assertFalse(Exam.PackageTier.FREE.satisfies(Exam.PackageTier.FAMILY));
+    void basic_user_can_access_basic_exams_only() {
+        Set<ExamTag> tags = Set.of(ExamTag.BASIC);
+        assertTrue(tags.contains(ExamTag.BASIC));
+        assertFalse(tags.contains(ExamTag.ADVANCED));
+        assertFalse(tags.contains(ExamTag.PRO));
     }
 
     @Test
-    void standard_tier_can_access_free_and_standard_exams() {
-        assertTrue(Exam.PackageTier.STANDARD.satisfies(Exam.PackageTier.FREE));
-        assertTrue(Exam.PackageTier.STANDARD.satisfies(Exam.PackageTier.STANDARD));
-        assertFalse(Exam.PackageTier.STANDARD.satisfies(Exam.PackageTier.PREMIUM));
-        assertFalse(Exam.PackageTier.STANDARD.satisfies(Exam.PackageTier.FAMILY));
+    void advanced_user_can_access_basic_and_advanced_exams() {
+        Set<ExamTag> tags = Set.of(ExamTag.BASIC, ExamTag.ADVANCED);
+        assertTrue(tags.contains(ExamTag.BASIC));
+        assertTrue(tags.contains(ExamTag.ADVANCED));
+        assertFalse(tags.contains(ExamTag.PRO));
     }
 
     @Test
-    void premium_tier_can_access_free_standard_premium_exams() {
-        assertTrue(Exam.PackageTier.PREMIUM.satisfies(Exam.PackageTier.FREE));
-        assertTrue(Exam.PackageTier.PREMIUM.satisfies(Exam.PackageTier.STANDARD));
-        assertTrue(Exam.PackageTier.PREMIUM.satisfies(Exam.PackageTier.PREMIUM));
-        assertFalse(Exam.PackageTier.PREMIUM.satisfies(Exam.PackageTier.FAMILY));
+    void pro_user_can_access_all_exams() {
+        Set<ExamTag> tags = Set.of(ExamTag.BASIC, ExamTag.ADVANCED, ExamTag.PRO);
+        assertTrue(tags.contains(ExamTag.BASIC));
+        assertTrue(tags.contains(ExamTag.ADVANCED));
+        assertTrue(tags.contains(ExamTag.PRO));
     }
 
     @Test
-    void family_tier_can_access_all_exams() {
-        for (Exam.PackageTier required : Exam.PackageTier.values()) {
-            assertTrue(Exam.PackageTier.FAMILY.satisfies(required),
-                "FAMILY should satisfy " + required);
-        }
-    }
-
-    @ParameterizedTest
-    @CsvSource({
-        "FREE,    FREE,    true",
-        "FREE,    STANDARD,false",
-        "STANDARD,STANDARD,true",
-        "STANDARD,PREMIUM, false",
-        "PREMIUM, PREMIUM, true",
-        "PREMIUM, FAMILY,  false",
-        "FAMILY,  FAMILY,  true",
-    })
-    void tier_hierarchy_is_correct(String userTier, String requiredTier, boolean expected) {
-        Exam.PackageTier user = Exam.PackageTier.valueOf(userTier.trim());
-        Exam.PackageTier required = Exam.PackageTier.valueOf(requiredTier.trim());
-        assertEquals(expected, user.satisfies(required));
+    void user_with_only_basic_cannot_access_pro_exam() {
+        Set<ExamTag> userTags = Set.of(ExamTag.BASIC);
+        assertFalse(userTags.contains(ExamTag.PRO));
     }
 
     @Test
-    void accessible_tiers_for_free_contains_only_free() {
-        var tiers = Exam.PackageTier.FREE.accessibleTiers();
-        assertEquals(1, tiers.size());
-        assertTrue(tiers.contains(Exam.PackageTier.FREE));
+    void advanced_subscriber_cannot_access_pro_exam() {
+        Set<ExamTag> userTags = Set.of(ExamTag.BASIC, ExamTag.ADVANCED);
+        assertFalse(userTags.contains(ExamTag.PRO));
     }
 
     @Test
-    void accessible_tiers_for_premium_contains_free_standard_premium() {
-        var tiers = Exam.PackageTier.PREMIUM.accessibleTiers();
-        assertEquals(3, tiers.size());
-        assertTrue(tiers.contains(Exam.PackageTier.FREE));
-        assertTrue(tiers.contains(Exam.PackageTier.STANDARD));
-        assertTrue(tiers.contains(Exam.PackageTier.PREMIUM));
-        assertFalse(tiers.contains(Exam.PackageTier.FAMILY));
+    void tags_are_additive_not_hierarchical() {
+        // Having PRO does not automatically grant ADVANCED access unless explicitly set
+        Set<ExamTag> proOnlyTags = Set.of(ExamTag.BASIC, ExamTag.PRO);
+        assertTrue(proOnlyTags.contains(ExamTag.BASIC));
+        assertFalse(proOnlyTags.contains(ExamTag.ADVANCED));
+        assertTrue(proOnlyTags.contains(ExamTag.PRO));
     }
 }

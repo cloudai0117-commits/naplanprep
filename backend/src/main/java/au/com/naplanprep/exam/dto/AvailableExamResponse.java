@@ -1,7 +1,7 @@
 package au.com.naplanprep.exam.dto;
 
 import au.com.naplanprep.content.entity.Question;
-import au.com.naplanprep.exam.entity.Exam;
+import au.com.naplanprep.exam.entity.ExamTag;
 
 import java.time.Instant;
 import java.util.UUID;
@@ -16,7 +16,7 @@ public record AvailableExamResponse(
     Instant availableFrom,
     Instant availableUntil,
     int questionCount,
-    Exam.PackageTier requiredTier,
+    ExamTag tag,
     /** AVAILABLE | UPCOMING | EXPIRED | UPGRADE_REQUIRED */
     String availability,
     boolean alreadyAttempted,

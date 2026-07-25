@@ -3,13 +3,14 @@ package au.com.naplanprep.exam;
 import au.com.naplanprep.common.exception.ResourceNotFoundException;
 import au.com.naplanprep.content.entity.Question;
 import au.com.naplanprep.content.repository.QuestionRepository;
+import au.com.naplanprep.auth.entity.User;
+import au.com.naplanprep.auth.repository.UserRepository;
 import au.com.naplanprep.exam.dto.QuestionSummary;
 import au.com.naplanprep.exam.entity.Exam;
 import au.com.naplanprep.exam.entity.ExamQuestion;
 import au.com.naplanprep.exam.entity.ExamSession;
+import au.com.naplanprep.exam.entity.ExamTag;
 import au.com.naplanprep.exam.repository.*;
-import au.com.naplanprep.exam.service.ExamService;
-import au.com.naplanprep.subscription.repository.SubscriptionRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -38,7 +39,7 @@ class ExamOneAttemptTest {
     @Mock private ExamRepository examRepository;
     @Mock private ExamQuestionRepository examQuestionRepository;
     @Mock private QuestionRepository questionRepository;
-    @Mock private SubscriptionRepository subscriptionRepository;
+    @Mock private UserRepository userRepository;
 
     @InjectMocks private ExamService examService;
 
@@ -57,7 +58,7 @@ class ExamOneAttemptTest {
         publishedExam.setStatus(Exam.ExamStatus.PUBLISHED);
         publishedExam.setDomain(Question.Domain.NUMERACY);
         publishedExam.setYearLevel(5);
-        publishedExam.setPackageTier(Exam.PackageTier.FREE);
+        publishedExam.setTag(ExamTag.BASIC);
         publishedExam.setTimeLimitSeconds(1800);
         publishedExam.setAvailableFrom(Instant.now().minusSeconds(86400));
         publishedExam.setAvailableUntil(Instant.now().plusSeconds(86400));
@@ -66,7 +67,7 @@ class ExamOneAttemptTest {
     @Test
     void startAdminExam_whenAlreadySubmitted_throwsConflict() {
         when(examRepository.findById(examId)).thenReturn(Optional.of(publishedExam));
-        when(subscriptionRepository.findFirstByUserIdAndStatusInOrderByCreatedAtDesc(any(), any())).thenReturn(Optional.empty());
+        when(userRepository.findById(userId)).thenReturn(Optional.empty()); // falls back to {BASIC}
         when(sessionRepository.existsByUserIdAndExamIdAndStatus(
             userId, examId, ExamSession.SessionStatus.SUBMITTED)).thenReturn(true);
 
@@ -80,7 +81,7 @@ class ExamOneAttemptTest {
     @Test
     void startAdminExam_firstAttempt_createsSession() {
         when(examRepository.findById(examId)).thenReturn(Optional.of(publishedExam));
-        when(subscriptionRepository.findFirstByUserIdAndStatusInOrderByCreatedAtDesc(any(), any())).thenReturn(Optional.empty());
+        when(userRepository.findById(userId)).thenReturn(Optional.empty()); // falls back to {BASIC}
         when(sessionRepository.existsByUserIdAndExamIdAndStatus(
             userId, examId, ExamSession.SessionStatus.SUBMITTED)).thenReturn(false);
 
@@ -121,9 +122,9 @@ class ExamOneAttemptTest {
 
     @Test
     void startAdminExam_wrongTier_throwsForbidden() {
-        publishedExam.setPackageTier(Exam.PackageTier.PREMIUM);
+        publishedExam.setTag(ExamTag.PRO); // user has only BASIC → access denied
         when(examRepository.findById(examId)).thenReturn(Optional.of(publishedExam));
-        when(subscriptionRepository.findFirstByUserIdAndStatusInOrderByCreatedAtDesc(any(), any())).thenReturn(Optional.empty());
+        when(userRepository.findById(userId)).thenReturn(Optional.empty()); // falls back to {BASIC}
 
         AccessDeniedException ex = assertThrows(AccessDeniedException.class,
             () -> examService.startAdminExam(examId, userId));

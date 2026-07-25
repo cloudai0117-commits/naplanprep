@@ -8,7 +8,6 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
-import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
 
@@ -25,22 +24,8 @@ public interface ExamRepository extends JpaRepository<Exam, UUID> {
         Pageable pageable
     );
 
-    @Query("SELECT e FROM Exam e WHERE " +
-           "e.status = 'PUBLISHED' AND " +
-           "e.packageTier IN :tiers AND " +
-           "(e.availableFrom IS NULL OR e.availableFrom <= :now) AND " +
-           "(e.availableUntil IS NULL OR e.availableUntil >= :now)")
-    List<Exam> findAvailable(
-        @Param("tiers") List<Exam.PackageTier> tiers,
-        @Param("now") Instant now
-    );
-
-    /** All published exams visible to the student's tier (for availability display). */
-    @Query("SELECT e FROM Exam e WHERE e.status = 'PUBLISHED' AND e.packageTier IN :tiers")
-    List<Exam> findAllPublishedForTiers(@Param("tiers") List<Exam.PackageTier> tiers);
-
-    /** All published exams regardless of tier — used for dashboard availability display including locked exams. */
-    @Query("SELECT e FROM Exam e WHERE e.status = 'PUBLISHED' ORDER BY e.packageTier ASC, e.yearLevel ASC")
+    /** All published exams — tag-based access control is applied in the service layer. */
+    @Query("SELECT e FROM Exam e WHERE e.status = 'PUBLISHED' ORDER BY e.tag ASC, e.yearLevel ASC")
     List<Exam> findAllPublished();
 
     @Query("SELECT COUNT(es) FROM ExamSession es WHERE es.examId = :examId AND es.status = 'SUBMITTED'")

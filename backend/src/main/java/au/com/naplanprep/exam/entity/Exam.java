@@ -41,7 +41,7 @@ public class Exam {
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
     @Builder.Default
-    private PackageTier packageTier = PackageTier.FREE;
+    private ExamTag tag = ExamTag.BASIC;
 
     @Column(nullable = false)
     private Integer timeLimitSeconds;
@@ -70,23 +70,5 @@ public class Exam {
 
     public enum ExamStatus {
         DRAFT, PUBLISHED, ARCHIVED
-    }
-
-    public enum PackageTier {
-        FREE, STANDARD, PREMIUM, FAMILY;
-
-        /** Returns true if this tier satisfies the required minimum tier. */
-        public boolean satisfies(PackageTier required) {
-            return this.ordinal() >= required.ordinal();
-        }
-
-        /** All tiers that are accessible to a user holding this tier. */
-        public List<PackageTier> accessibleTiers() {
-            List<PackageTier> tiers = new ArrayList<>();
-            for (PackageTier t : values()) {
-                if (this.satisfies(t)) tiers.add(t);
-            }
-            return tiers;
-        }
     }
 }
