@@ -11,6 +11,7 @@ import au.com.naplanprep.exam.entity.ExamQuestion;
 import au.com.naplanprep.exam.entity.ExamSession;
 import au.com.naplanprep.exam.entity.ExamTag;
 import au.com.naplanprep.exam.repository.*;
+import au.com.naplanprep.exam.service.ExamService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
