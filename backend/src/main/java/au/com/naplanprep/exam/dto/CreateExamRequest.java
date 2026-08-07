@@ -1,7 +1,7 @@
 package au.com.naplanprep.exam.dto;
 
 import au.com.naplanprep.content.entity.Question;
-import au.com.naplanprep.exam.entity.ExamTag;
+import au.com.naplanprep.exam.entity.PackageType;
 import jakarta.validation.constraints.*;
 
 import java.time.Instant;
@@ -11,7 +11,7 @@ public record CreateExamRequest(
     String description,
     @NotNull @Min(3) @Max(9) Integer yearLevel,
     @NotNull Question.Domain domain,
-    @NotNull ExamTag tag,
+    @NotNull PackageType packageType,
     @NotNull @Min(60) Integer timeLimitSeconds,
     Instant availableFrom,
     Instant availableUntil

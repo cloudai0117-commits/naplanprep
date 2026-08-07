@@ -9,17 +9,9 @@ interface Plan {
   name: string
   slug: string
   monthlyPrice: number
-  annualPrice: number
-  maxChildren: number | null
-  dailyQuestionLimit: number
-  annualMockExamLimit: number
-  adaptiveLearning: boolean
-  parentDashboard: boolean
-  detailedAnalytics: boolean
 }
 
 export default function PricingPage() {
-  const [interval, setInterval] = useState<'monthly' | 'annual'>('monthly')
   const [checkoutError, setCheckoutError] = useState<string | null>(null)
   const { isAuthenticated } = useAuthStore()
   const navigate = useNavigate()
@@ -37,7 +29,7 @@ export default function PricingPage() {
 
   const { mutate: checkout, isPending } = useMutation({
     mutationFn: (planSlug: string) =>
-      apiClient.post('/subscriptions/checkout', { planSlug, interval }),
+      apiClient.post('/subscriptions/checkout', { planSlug }),
     onSuccess: (res) => {
       setCheckoutError(null)
       const url = res.data.data?.checkoutUrl
@@ -60,38 +52,13 @@ export default function PricingPage() {
     },
   })
 
-  const { mutate: openPortal } = useMutation({
-    mutationFn: () => apiClient.post('/subscriptions/portal'),
-    onSuccess: (res) => {
-      const url = res.data.data?.portalUrl
-      if (url) window.location.href = url
-    },
-    onError: () => {
-      setCheckoutError('Unable to open billing portal. Please try again.')
-    },
-  })
-
   if (isLoading) return <div className="text-gray-500">Loading plans...</div>
 
   return (
     <div className="space-y-8">
       <div className="text-center">
         <h1 className="text-3xl font-bold text-gray-900">Choose Your Plan</h1>
-        <p className="text-gray-600 mt-2">Start free, upgrade anytime. Cancel anytime.</p>
-
-        <div className="mt-6 inline-flex items-center bg-gray-100 rounded-lg p-1">
-          {(['monthly', 'annual'] as const).map((i) => (
-            <button
-              key={i}
-              onClick={() => setInterval(i)}
-              className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
-                interval === i ? 'bg-white shadow text-gray-900' : 'text-gray-600 hover:text-gray-800'
-              }`}
-            >
-              {i === 'monthly' ? 'Monthly' : 'Annual (save ~15%)'}
-            </button>
-          ))}
-        </div>
+        <p className="text-gray-600 mt-2">One-time purchase · Valid for 1 year · No subscription</p>
       </div>
 
       {currentSub && (
@@ -101,12 +68,9 @@ export default function PricingPage() {
               <div className="font-semibold text-blue-900">Current Plan: {currentSub.plan?.name}</div>
               <div className="text-blue-700 text-sm">
                 Status: {currentSub.status} ·
-                Renews: {currentSub.currentPeriodEnd ? new Date(currentSub.currentPeriodEnd).toLocaleDateString() : '—'}
+                Valid until: {currentSub.currentPeriodEnd ? new Date(currentSub.currentPeriodEnd).toLocaleDateString() : '—'}
               </div>
             </div>
-            <button onClick={() => openPortal()} className="btn-secondary text-sm py-1.5">
-              Manage Billing
-            </button>
           </div>
         </div>
       )}
@@ -122,11 +86,8 @@ export default function PricingPage() {
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         {plans?.filter((p) => p.slug !== 'family').map((plan) => {
-          const price = interval === 'annual' && plan.annualPrice
-            ? (plan.annualPrice / 12).toFixed(2)
-            : plan.monthlyPrice.toFixed(2)
           const isCurrentPlan = currentSub?.plan?.id === plan.id
-          const isPremium = plan.slug === 'pro'
+          const isPremium = plan.slug === 'pro' || plan.slug === 'premium'
 
           return (
             <div
@@ -144,55 +105,42 @@ export default function PricingPage() {
                   <span className="text-3xl font-bold text-gray-900">Free</span>
                 ) : (
                   <>
-                    <span className="text-3xl font-bold text-gray-900">${price}</span>
-                    <span className="text-gray-500">/mo</span>
-                    {interval === 'annual' && plan.annualPrice && (
-                      <div className="text-xs text-green-600 font-medium">
-                        ${plan.annualPrice}/year (billed annually)
-                      </div>
-                    )}
+                    <span className="text-3xl font-bold text-gray-900">${plan.monthlyPrice.toFixed(2)}</span>
+                    <div className="text-xs text-gray-500 mt-1">One-time · Valid 1 year</div>
                   </>
                 )}
               </div>
 
               <ul className="space-y-2 flex-1 mb-6 text-sm text-gray-600">
-                <li className="flex items-start">
-                  <span className="text-green-500 mr-2 mt-0.5">✓</span>
-                  {plan.dailyQuestionLimit === -1 ? 'Unlimited questions/day' : `${plan.dailyQuestionLimit} questions/day`}
-                </li>
-                <li className="flex items-start">
-                  <span className="text-green-500 mr-2 mt-0.5">✓</span>
-                  {plan.annualMockExamLimit === -1 ? 'Unlimited mock exams' : `${plan.annualMockExamLimit} mock exams/year`}
-                </li>
-                {plan.adaptiveLearning && (
-                  <li className="flex items-start">
-                    <span className="text-green-500 mr-2 mt-0.5">✓</span>
-                    Adaptive learning
-                  </li>
+                {(plan.slug === 'free' || plan.slug === 'basic') && (
+                  <>
+                    <li className="flex items-start"><span className="text-green-500 mr-2 mt-0.5">✓</span><strong>5 Exams</strong></li>
+                    <li className="flex items-start text-sm text-gray-500 ml-5">1 Numeracy</li>
+                    <li className="flex items-start text-sm text-gray-500 ml-5">1 Reading</li>
+                    <li className="flex items-start text-sm text-gray-500 ml-5">1 Writing</li>
+                    <li className="flex items-start text-sm text-gray-500 ml-5">1 Grammar & Punctuation</li>
+                    <li className="flex items-start text-sm text-gray-500 ml-5">1 Spelling</li>
+                  </>
                 )}
-                {plan.parentDashboard && (
-                  <li className="flex items-start">
-                    <span className="text-green-500 mr-2 mt-0.5">✓</span>
-                    Parent dashboard
-                  </li>
+                {plan.slug === 'advanced' && (
+                  <>
+                    <li className="flex items-start"><span className="text-green-500 mr-2 mt-0.5">✓</span><strong>25 Exams</strong></li>
+                    <li className="flex items-start text-sm text-gray-500 ml-5">5 Numeracy</li>
+                    <li className="flex items-start text-sm text-gray-500 ml-5">5 Reading</li>
+                    <li className="flex items-start text-sm text-gray-500 ml-5">5 Writing</li>
+                    <li className="flex items-start text-sm text-gray-500 ml-5">5 Grammar & Punctuation</li>
+                    <li className="flex items-start text-sm text-gray-500 ml-5">5 Spelling</li>
+                  </>
                 )}
-                {plan.detailedAnalytics && (
-                  <li className="flex items-start">
-                    <span className="text-green-500 mr-2 mt-0.5">✓</span>
-                    Detailed analytics
-                  </li>
-                )}
-                {plan.maxChildren && plan.maxChildren > 1 && (
-                  <li className="flex items-start">
-                    <span className="text-green-500 mr-2 mt-0.5">✓</span>
-                    Up to {plan.maxChildren} children
-                  </li>
-                )}
-                {plan.slug === 'pro' && (
-                  <li className="flex items-start text-blue-600 font-medium">
-                    <span className="mr-2 mt-0.5">🎁</span>
-                    7-day free trial
-                  </li>
+                {(plan.slug === 'pro' || plan.slug === 'premium') && (
+                  <>
+                    <li className="flex items-start"><span className="text-green-500 mr-2 mt-0.5">✓</span><strong>50 Exams</strong></li>
+                    <li className="flex items-start text-sm text-gray-500 ml-5">10 Numeracy</li>
+                    <li className="flex items-start text-sm text-gray-500 ml-5">10 Reading</li>
+                    <li className="flex items-start text-sm text-gray-500 ml-5">10 Writing</li>
+                    <li className="flex items-start text-sm text-gray-500 ml-5">10 Grammar & Punctuation</li>
+                    <li className="flex items-start text-sm text-gray-500 ml-5">10 Spelling</li>
+                  </>
                 )}
               </ul>
 

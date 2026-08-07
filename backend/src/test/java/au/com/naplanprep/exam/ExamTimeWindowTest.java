@@ -2,7 +2,7 @@ package au.com.naplanprep.exam;
 
 import au.com.naplanprep.content.entity.Question;
 import au.com.naplanprep.exam.entity.Exam;
-import au.com.naplanprep.exam.entity.ExamTag;
+import au.com.naplanprep.exam.entity.PackageType;
 import org.junit.jupiter.api.Test;
 
 import java.time.Instant;
@@ -16,7 +16,7 @@ class ExamTimeWindowTest {
         Exam e = new Exam();
         e.setStatus(Exam.ExamStatus.PUBLISHED);
         e.setDomain(Question.Domain.NUMERACY);
-        e.setTag(ExamTag.BASIC);
+        e.setPackageType(PackageType.FREE);
         e.setAvailableFrom(from);
         e.setAvailableUntil(until);
         return e;

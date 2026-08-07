@@ -20,9 +20,9 @@ const domains = [
 ]
 
 const TAG_LABELS: Record<string, string> = {
-  BASIC: 'Basic',
+  FREE: 'Free',
   ADVANCED: 'Advanced',
-  PRO: 'Pro',
+  PREMIUM: 'Premium',
 }
 
 export default function ExamSelection() {
@@ -58,13 +58,13 @@ export default function ExamSelection() {
   const examsByTag: Record<string, any[]> = {}
   if (availableExams) {
     for (const exam of availableExams) {
-      const tag = exam.tag || 'BASIC'
+      const tag = exam.packageType || 'FREE'
       if (!examsByTag[tag]) examsByTag[tag] = []
       examsByTag[tag].push(exam)
     }
   }
 
-  const tagOrder = ['BASIC', 'ADVANCED', 'PRO']
+  const tagOrder = ['FREE', 'ADVANCED', 'PREMIUM']
 
   return (
     <div className="max-w-3xl mx-auto space-y-8">
@@ -132,7 +132,7 @@ export default function ExamSelection() {
             <div key={tag}>
               <div className="flex items-center gap-2 mb-3">
                 <h3 className="text-base font-semibold text-gray-800">{TAG_LABELS[tag] || tag}</h3>
-                {tag !== 'BASIC' && (
+                {tag !== 'FREE' && (
                   <span className="text-xs px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 font-medium">
                     {TAG_LABELS[tag]} only
                   </span>

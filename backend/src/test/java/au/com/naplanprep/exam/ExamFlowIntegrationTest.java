@@ -7,7 +7,7 @@ import au.com.naplanprep.content.repository.QuestionRepository;
 import au.com.naplanprep.exam.dto.ExamResultDetailResponse;
 import au.com.naplanprep.exam.entity.Exam;
 import au.com.naplanprep.exam.entity.ExamQuestion;
-import au.com.naplanprep.exam.entity.ExamTag;
+import au.com.naplanprep.exam.entity.PackageType;
 import au.com.naplanprep.exam.entity.ExamSession;
 import au.com.naplanprep.exam.repository.*;
 import au.com.naplanprep.exam.service.ExamService;
@@ -77,7 +77,7 @@ class ExamFlowIntegrationTest {
         exam.setTitle("Integration Test Exam");
         exam.setYearLevel(5);
         exam.setDomain(Question.Domain.NUMERACY);
-        exam.setTag(ExamTag.BASIC);
+        exam.setPackageType(PackageType.FREE);
         exam.setTimeLimitSeconds(1800);
         exam.setStatus(Exam.ExamStatus.PUBLISHED);
         exam.setAvailableFrom(Instant.now().minusSeconds(3600));

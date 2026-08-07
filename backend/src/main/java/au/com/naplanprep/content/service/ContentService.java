@@ -4,6 +4,7 @@ import au.com.naplanprep.common.exception.ResourceNotFoundException;
 import au.com.naplanprep.content.dto.QuestionRequest;
 import au.com.naplanprep.content.entity.Question;
 import au.com.naplanprep.content.repository.QuestionRepository;
+import au.com.naplanprep.exam.entity.PackageType;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -21,7 +22,8 @@ public class ContentService {
 
     public Page<Question> searchQuestions(
         Integer yearLevel, Question.Domain domain, String topic,
-        Integer difficultyBand, Question.QuestionStatus status, Pageable pageable
+        Integer difficultyBand, Question.QuestionStatus status,
+        PackageType packageType, Pageable pageable
     ) {
         Specification<Question> spec = Specification.where(null);
         if (yearLevel != null)
@@ -34,12 +36,14 @@ public class ContentService {
             spec = spec.and((r, q, cb) -> cb.equal(r.get("difficultyBand"), difficultyBand));
         if (status != null)
             spec = spec.and((r, q, cb) -> cb.equal(r.get("status"), status));
+        if (packageType != null)
+            spec = spec.and((r, q, cb) -> cb.equal(r.get("packageType"), packageType));
         return questionRepository.findAll(spec, pageable);
     }
 
     @Transactional
     public Question createQuestion(QuestionRequest req, UUID createdBy) {
-        Question question = Question.builder()
+        var builder = Question.builder()
             .questionType(req.questionType())
             .yearLevel(req.yearLevel())
             .domain(req.domain())
@@ -50,9 +54,10 @@ public class ContentService {
             .options(req.options())
             .correctAnswer(req.correctAnswer())
             .explanation(req.explanation())
-            .createdBy(createdBy)
-            .build();
-        return questionRepository.save(question);
+            .createdBy(createdBy);
+        if (req.packageType() != null) builder.packageType(req.packageType());
+        if (req.difficulty() != null) builder.difficulty(req.difficulty());
+        return questionRepository.save(builder.build());
     }
 
     @Transactional
@@ -70,6 +75,8 @@ public class ContentService {
         question.setOptions(req.options());
         question.setCorrectAnswer(req.correctAnswer());
         question.setExplanation(req.explanation());
+        if (req.packageType() != null) question.setPackageType(req.packageType());
+        if (req.difficulty() != null) question.setDifficulty(req.difficulty());
 
         return questionRepository.save(question);
     }

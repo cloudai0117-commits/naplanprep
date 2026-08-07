@@ -9,6 +9,8 @@ interface QuestionForm {
   domain: string
   topic: string
   difficultyBand: number
+  packageType: string
+  difficulty: string
   stimulusText?: string
   questionText: string
   correctAnswerValue: string
@@ -20,7 +22,7 @@ interface QuestionForm {
 }
 
 export default function QuestionBank() {
-  const [filters, setFilters] = useState({ yearLevel: '', domain: '', status: '' })
+  const [filters, setFilters] = useState({ yearLevel: '', domain: '', status: '', packageType: '' })
   const [page, setPage] = useState(0)
   const [showModal, setShowModal] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
@@ -33,12 +35,13 @@ export default function QuestionBank() {
       if (filters.yearLevel) params.append('yearLevel', filters.yearLevel)
       if (filters.domain) params.append('domain', filters.domain)
       if (filters.status) params.append('status', filters.status)
+      if (filters.packageType) params.append('packageType', filters.packageType)
       return apiClient.get(`/content/questions?${params}`).then((r) => r.data.data)
     },
   })
 
   const { register, handleSubmit, reset, formState: { errors } } = useForm<QuestionForm>({
-    defaultValues: { questionType: 'MULTIPLE_CHOICE', yearLevel: 3, domain: 'NUMERACY', difficultyBand: 5 },
+    defaultValues: { questionType: 'MULTIPLE_CHOICE', yearLevel: 3, domain: 'NUMERACY', difficultyBand: 5, packageType: 'FREE', difficulty: 'EASY' },
   })
 
   const { mutate: saveQuestion, isPending, error: saveError } = useMutation({
@@ -50,6 +53,8 @@ export default function QuestionBank() {
         domain: form.domain,
         topic: form.topic,
         difficultyBand: Number(form.difficultyBand),
+        packageType: form.packageType,
+        difficulty: form.difficulty,
         stimulusText: form.stimulusText || null,
         questionText: form.questionText,
         options: options.length > 0 ? { options } : null,
@@ -108,6 +113,16 @@ export default function QuestionBank() {
               <option key={s} value={s}>{s}</option>
             ))}
           </select>
+          <select
+            value={filters.packageType}
+            onChange={(e) => setFilters((f) => ({ ...f, packageType: e.target.value }))}
+            className="input-field w-36"
+          >
+            <option value="">All Packages</option>
+            {['FREE', 'ADVANCED', 'PREMIUM'].map((p) => (
+              <option key={p} value={p}>{p}</option>
+            ))}
+          </select>
         </div>
         <button onClick={() => { setShowModal(true); setEditingId(null); reset() }} className="btn-primary">
           + New Question
@@ -122,6 +137,7 @@ export default function QuestionBank() {
               <th className="table-th">Year</th>
               <th className="table-th">Domain</th>
               <th className="table-th">Difficulty</th>
+              <th className="table-th">Package</th>
               <th className="table-th">Status</th>
               <th className="table-th">Actions</th>
             </tr>
@@ -133,6 +149,7 @@ export default function QuestionBank() {
                 <td className="table-td">Year {q.yearLevel}</td>
                 <td className="table-td text-xs">{q.domain?.replace('_', ' ')}</td>
                 <td className="table-td">Band {q.difficultyBand}</td>
+                <td className="table-td text-xs">{q.packageType || 'FREE'}</td>
                 <td className="table-td">
                   <span className={`badge ${
                     q.status === 'PUBLISHED' ? 'bg-green-100 text-green-800' :
@@ -222,6 +239,22 @@ export default function QuestionBank() {
                   <label className="block text-xs font-medium text-gray-700 mb-1">Difficulty Band (1-10)</label>
                   <input {...register('difficultyBand', { required: true, min: 1, max: 10, valueAsNumber: true })} type="number" min={1} max={10} className="input-field" />
                   {errors.difficultyBand && <p className="mt-1 text-xs text-red-600">Required, 1–10</p>}
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">Package</label>
+                  <select {...register('packageType', { required: true })} className="input-field">
+                    <option value="FREE">FREE</option>
+                    <option value="ADVANCED">ADVANCED</option>
+                    <option value="PREMIUM">PREMIUM</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">Difficulty</label>
+                  <select {...register('difficulty', { required: true })} className="input-field">
+                    <option value="EASY">EASY</option>
+                    <option value="MEDIUM">MEDIUM</option>
+                    <option value="HARD">HARD</option>
+                  </select>
                 </div>
               </div>
               <div>

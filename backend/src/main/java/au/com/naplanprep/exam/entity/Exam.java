@@ -39,9 +39,9 @@ public class Exam {
     private Question.Domain domain;
 
     @Enumerated(EnumType.STRING)
-    @Column(nullable = false)
+    @Column(name = "package_type", nullable = false)
     @Builder.Default
-    private ExamTag tag = ExamTag.BASIC;
+    private PackageType packageType = PackageType.FREE;
 
     @Column(nullable = false)
     private Integer timeLimitSeconds;
@@ -57,6 +57,7 @@ public class Exam {
     private UUID createdBy;
 
     @CreationTimestamp
+    @Column(updatable = false)
     private Instant createdAt;
 
     @UpdateTimestamp
@@ -69,6 +70,6 @@ public class Exam {
     private List<ExamQuestion> examQuestions = new ArrayList<>();
 
     public enum ExamStatus {
-        DRAFT, PUBLISHED, ARCHIVED
+        DRAFT, PUBLISHED, HIDDEN, ARCHIVED
     }
 }

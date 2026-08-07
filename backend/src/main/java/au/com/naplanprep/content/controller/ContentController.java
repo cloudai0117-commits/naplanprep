@@ -4,6 +4,7 @@ import au.com.naplanprep.common.ApiResponse;
 import au.com.naplanprep.content.dto.QuestionRequest;
 import au.com.naplanprep.content.entity.Question;
 import au.com.naplanprep.content.service.ContentService;
+import au.com.naplanprep.exam.entity.PackageType;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
@@ -33,9 +34,10 @@ public class ContentController {
         @RequestParam(required = false) String topic,
         @RequestParam(required = false) Integer difficultyBand,
         @RequestParam(required = false) Question.QuestionStatus status,
+        @RequestParam(required = false) PackageType packageType,
         @PageableDefault(size = 20) Pageable pageable
     ) {
-        Page<Question> page = contentService.searchQuestions(yearLevel, domain, topic, difficultyBand, status, pageable);
+        Page<Question> page = contentService.searchQuestions(yearLevel, domain, topic, difficultyBand, status, packageType, pageable);
         return ResponseEntity.ok(ApiResponse.success(page, Map.of("totalElements", page.getTotalElements())));
     }
 

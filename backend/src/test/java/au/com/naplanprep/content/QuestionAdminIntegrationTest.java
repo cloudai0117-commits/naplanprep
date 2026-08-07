@@ -57,6 +57,7 @@ class QuestionAdminIntegrationTest {
     private QuestionRequest req(int year, Question.Domain domain, String topic) {
         return new QuestionRequest(
             Question.QuestionType.MULTIPLE_CHOICE, year, domain, topic, 3,
+            null, null,
             null, "Test question text?",
             Map.of("options", List.of("A", "B", "C", "D")),
             Map.of("value", "A"),
@@ -70,7 +71,7 @@ class QuestionAdminIntegrationTest {
     void searchWithAllNullFilters_doesNotThrowAndReturnsPage() {
         // Verifies the Specification-based query handles null enum params (replaces
         // the JPQL query that crashed Hibernate when enum params were null).
-        Page<Question> page = contentService.searchQuestions(null, null, null, null, null, Pageable.ofSize(20));
+        Page<Question> page = contentService.searchQuestions(null, null, null, null, null, null, Pageable.ofSize(20));
         assertNotNull(page);
     }
 
@@ -80,7 +81,7 @@ class QuestionAdminIntegrationTest {
     void createdQuestion_appearsInSearchByYearLevel() {
         Question q = contentService.createQuestion(req(5, Question.Domain.NUMERACY, "Fractions"), creatorId);
 
-        Page<Question> results = contentService.searchQuestions(5, null, null, null, null, Pageable.ofSize(50));
+        Page<Question> results = contentService.searchQuestions(5, null, null, null, null, null, Pageable.ofSize(50));
         assertTrue(results.getContent().stream().anyMatch(r -> r.getId().equals(q.getId())));
     }
 
@@ -88,10 +89,10 @@ class QuestionAdminIntegrationTest {
     void createdQuestion_appearsInSearchByDomain_andExcludedFromOtherDomains() {
         Question q = contentService.createQuestion(req(7, Question.Domain.READING, "Comprehension"), creatorId);
 
-        Page<Question> reading = contentService.searchQuestions(null, Question.Domain.READING, null, null, null, Pageable.ofSize(50));
+        Page<Question> reading = contentService.searchQuestions(null, Question.Domain.READING, null, null, null, null, Pageable.ofSize(50));
         assertTrue(reading.getContent().stream().anyMatch(r -> r.getId().equals(q.getId())));
 
-        Page<Question> spelling = contentService.searchQuestions(null, Question.Domain.SPELLING, null, null, null, Pageable.ofSize(50));
+        Page<Question> spelling = contentService.searchQuestions(null, Question.Domain.SPELLING, null, null, null, null, Pageable.ofSize(50));
         assertFalse(spelling.getContent().stream().anyMatch(r -> r.getId().equals(q.getId())));
     }
 
@@ -99,7 +100,7 @@ class QuestionAdminIntegrationTest {
     void searchByTopic_isCaseInsensitive() {
         contentService.createQuestion(req(9, Question.Domain.NUMERACY, "Long Division"), creatorId);
 
-        Page<Question> results = contentService.searchQuestions(null, null, "long division", null, null, Pageable.ofSize(50));
+        Page<Question> results = contentService.searchQuestions(null, null, "long division", null, null, null, Pageable.ofSize(50));
         assertTrue(results.getTotalElements() >= 1);
     }
 
@@ -107,7 +108,7 @@ class QuestionAdminIntegrationTest {
     void createdQuestion_filteredByStatus_appearsAsDraft() {
         Question q = contentService.createQuestion(req(3, Question.Domain.GRAMMAR_PUNCTUATION, "Punctuation"), creatorId);
 
-        Page<Question> drafts = contentService.searchQuestions(null, null, null, null, Question.QuestionStatus.DRAFT, Pageable.ofSize(50));
+        Page<Question> drafts = contentService.searchQuestions(null, null, null, null, Question.QuestionStatus.DRAFT, null, Pageable.ofSize(50));
         assertTrue(drafts.getContent().stream().anyMatch(r -> r.getId().equals(q.getId())));
     }
 
@@ -145,7 +146,7 @@ class QuestionAdminIntegrationTest {
         contentService.updateStatus(q.getId(), Question.QuestionStatus.PUBLISHED);
 
         Page<Question> published = contentService.searchQuestions(
-            null, null, null, null, Question.QuestionStatus.PUBLISHED, Pageable.ofSize(200));
+            null, null, null, null, Question.QuestionStatus.PUBLISHED, null, Pageable.ofSize(200));
         assertTrue(published.getContent().stream().anyMatch(r -> r.getId().equals(q.getId())));
     }
 
@@ -154,7 +155,7 @@ class QuestionAdminIntegrationTest {
         Question q = contentService.createQuestion(req(3, Question.Domain.READING, "Inference"), creatorId);
 
         Page<Question> published = contentService.searchQuestions(
-            null, null, null, null, Question.QuestionStatus.PUBLISHED, Pageable.ofSize(200));
+            null, null, null, null, Question.QuestionStatus.PUBLISHED, null, Pageable.ofSize(200));
         assertFalse(published.getContent().stream().anyMatch(r -> r.getId().equals(q.getId())));
     }
 }

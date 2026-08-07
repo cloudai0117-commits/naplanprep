@@ -9,14 +9,14 @@ type FormValues = {
   description: string
   yearLevel: number
   domain: string
-  packageTier: string
+  packageType: string
   timeLimitSeconds: number
   availableFrom: string
   availableUntil: string
 }
 
 const DOMAINS = ['NUMERACY', 'READING', 'WRITING', 'SPELLING', 'GRAMMAR_PUNCTUATION']
-const TIERS = ['FREE', 'STANDARD', 'PREMIUM']
+const TIERS = ['FREE', 'ADVANCED', 'PREMIUM']
 const YEAR_LEVELS = [3, 5, 7, 9]
 
 export default function ExamForm() {
@@ -37,7 +37,7 @@ export default function ExamForm() {
       description: '',
       yearLevel: 5,
       domain: 'NUMERACY',
-      packageTier: 'FREE',
+      packageType: 'FREE',
       timeLimitSeconds: 1800,
       availableFrom: '',
       availableUntil: '',
@@ -51,7 +51,7 @@ export default function ExamForm() {
         description: exam.description || '',
         yearLevel: exam.yearLevel,
         domain: exam.domain,
-        packageTier: exam.packageTier,
+        packageType: exam.packageType,
         timeLimitSeconds: exam.timeLimitSeconds,
         availableFrom: exam.availableFrom ? exam.availableFrom.slice(0, 16) : '',
         availableUntil: exam.availableUntil ? exam.availableUntil.slice(0, 16) : '',
@@ -133,8 +133,8 @@ export default function ExamForm() {
 
         <div className="grid grid-cols-2 gap-4">
           <div>
-            <label className="block text-xs font-medium text-gray-700 mb-1">Package Tier *</label>
-            <select {...register('packageTier', { required: true })} className="input-field">
+            <label className="block text-xs font-medium text-gray-700 mb-1">Package *</label>
+            <select {...register('packageType', { required: true })} className="input-field">
               {TIERS.map((t) => (
                 <option key={t} value={t}>{t}</option>
               ))}

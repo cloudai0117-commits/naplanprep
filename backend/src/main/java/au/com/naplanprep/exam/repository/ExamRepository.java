@@ -24,8 +24,7 @@ public interface ExamRepository extends JpaRepository<Exam, UUID> {
         Pageable pageable
     );
 
-    /** All published exams — tag-based access control is applied in the service layer. */
-    @Query("SELECT e FROM Exam e WHERE e.status = 'PUBLISHED' ORDER BY e.tag ASC, e.yearLevel ASC")
+    @Query("SELECT e FROM Exam e WHERE e.status = 'PUBLISHED' ORDER BY e.packageType ASC, e.yearLevel ASC")
     List<Exam> findAllPublished();
 
     @Query("SELECT COUNT(es) FROM ExamSession es WHERE es.examId = :examId AND es.status = 'SUBMITTED'")

@@ -1,6 +1,6 @@
 package au.com.naplanprep.exam;
 
-import au.com.naplanprep.exam.entity.ExamTag;
+import au.com.naplanprep.exam.entity.PackageType;
 import org.junit.jupiter.api.Test;
 
 import java.util.Set;
@@ -10,47 +10,47 @@ import static org.junit.jupiter.api.Assertions.*;
 class ExamEntitlementTest {
 
     @Test
-    void basic_user_can_access_basic_exams_only() {
-        Set<ExamTag> tags = Set.of(ExamTag.BASIC);
-        assertTrue(tags.contains(ExamTag.BASIC));
-        assertFalse(tags.contains(ExamTag.ADVANCED));
-        assertFalse(tags.contains(ExamTag.PRO));
+    void free_user_can_access_free_exams_only() {
+        Set<PackageType> tags = Set.of(PackageType.FREE);
+        assertTrue(tags.contains(PackageType.FREE));
+        assertFalse(tags.contains(PackageType.ADVANCED));
+        assertFalse(tags.contains(PackageType.PREMIUM));
     }
 
     @Test
-    void advanced_user_can_access_basic_and_advanced_exams() {
-        Set<ExamTag> tags = Set.of(ExamTag.BASIC, ExamTag.ADVANCED);
-        assertTrue(tags.contains(ExamTag.BASIC));
-        assertTrue(tags.contains(ExamTag.ADVANCED));
-        assertFalse(tags.contains(ExamTag.PRO));
+    void advanced_user_can_access_free_and_advanced_exams() {
+        Set<PackageType> tags = Set.of(PackageType.FREE, PackageType.ADVANCED);
+        assertTrue(tags.contains(PackageType.FREE));
+        assertTrue(tags.contains(PackageType.ADVANCED));
+        assertFalse(tags.contains(PackageType.PREMIUM));
     }
 
     @Test
-    void pro_user_can_access_all_exams() {
-        Set<ExamTag> tags = Set.of(ExamTag.BASIC, ExamTag.ADVANCED, ExamTag.PRO);
-        assertTrue(tags.contains(ExamTag.BASIC));
-        assertTrue(tags.contains(ExamTag.ADVANCED));
-        assertTrue(tags.contains(ExamTag.PRO));
+    void premium_user_can_access_all_exams() {
+        Set<PackageType> tags = Set.of(PackageType.FREE, PackageType.ADVANCED, PackageType.PREMIUM);
+        assertTrue(tags.contains(PackageType.FREE));
+        assertTrue(tags.contains(PackageType.ADVANCED));
+        assertTrue(tags.contains(PackageType.PREMIUM));
     }
 
     @Test
-    void user_with_only_basic_cannot_access_pro_exam() {
-        Set<ExamTag> userTags = Set.of(ExamTag.BASIC);
-        assertFalse(userTags.contains(ExamTag.PRO));
+    void user_with_only_free_cannot_access_premium_exam() {
+        Set<PackageType> userTags = Set.of(PackageType.FREE);
+        assertFalse(userTags.contains(PackageType.PREMIUM));
     }
 
     @Test
-    void advanced_subscriber_cannot_access_pro_exam() {
-        Set<ExamTag> userTags = Set.of(ExamTag.BASIC, ExamTag.ADVANCED);
-        assertFalse(userTags.contains(ExamTag.PRO));
+    void advanced_subscriber_cannot_access_premium_exam() {
+        Set<PackageType> userTags = Set.of(PackageType.FREE, PackageType.ADVANCED);
+        assertFalse(userTags.contains(PackageType.PREMIUM));
     }
 
     @Test
     void tags_are_additive_not_hierarchical() {
-        // Having PRO does not automatically grant ADVANCED access unless explicitly set
-        Set<ExamTag> proOnlyTags = Set.of(ExamTag.BASIC, ExamTag.PRO);
-        assertTrue(proOnlyTags.contains(ExamTag.BASIC));
-        assertFalse(proOnlyTags.contains(ExamTag.ADVANCED));
-        assertTrue(proOnlyTags.contains(ExamTag.PRO));
+        // Having PREMIUM does not automatically grant ADVANCED access unless explicitly set
+        Set<PackageType> premiumOnlyTags = Set.of(PackageType.FREE, PackageType.PREMIUM);
+        assertTrue(premiumOnlyTags.contains(PackageType.FREE));
+        assertFalse(premiumOnlyTags.contains(PackageType.ADVANCED));
+        assertTrue(premiumOnlyTags.contains(PackageType.PREMIUM));
     }
 }

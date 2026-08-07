@@ -53,8 +53,6 @@ public class ExamService {
 
         List<Question> questions;
         if (req.examType() == ExamSession.ExamType.PRACTICE) {
-            // Rotate questions so users encounter new ones each practice attempt.
-            // Fall back to the full pool only when all available questions are exhausted.
             List<UUID> seenIds = answerRepository.findSeenQuestionIdsByUserId(userId);
             if (!seenIds.isEmpty()) {
                 questions = questionRepository.findUnseenRandom(req.yearLevel(), domain, seenIds, pageable);
@@ -97,11 +95,10 @@ public class ExamService {
 
     @Transactional(readOnly = true)
     public List<AvailableExamResponse> getAvailableExams(UUID userId) {
-        Set<ExamTag> userTags = resolveUserTags(userId);
+        Set<PackageType> userPackages = resolveUserPackages(userId);
         List<Exam> all = examRepository.findAllPublished();
         Instant now = Instant.now();
 
-        // Filter by student's year level (if set on their profile)
         Integer userYearLevel = userRepository.findByIdWithProfile(userId)
             .map(u -> u.getProfile() != null ? u.getProfile().getYearLevel() : null)
             .orElse(null);
@@ -109,27 +106,27 @@ public class ExamService {
         return all.stream()
             .filter(exam -> userYearLevel == null || exam.getYearLevel() == null || exam.getYearLevel().equals(userYearLevel))
             .map(exam -> {
-            int qCount = examQuestionRepository.findByExamIdOrdered(exam.getId()).size();
-            if (qCount == 0) return null;  // skip exams with no questions
-            boolean attempted = sessionRepository.existsByUserIdAndExamIdAndStatus(
-                userId, exam.getId(), ExamSession.SessionStatus.SUBMITTED);
+                int qCount = examQuestionRepository.findByExamIdOrdered(exam.getId()).size();
+                if (qCount == 0) return null;
+                boolean attempted = sessionRepository.existsByUserIdAndExamIdAndStatus(
+                    userId, exam.getId(), ExamSession.SessionStatus.SUBMITTED);
 
-            UUID completedSessionId = null;
-            if (attempted) {
-                completedSessionId = sessionRepository
-                    .findByUserIdAndExamIdAndStatus(userId, exam.getId(), ExamSession.SessionStatus.SUBMITTED)
-                    .map(ExamSession::getId).orElse(null);
-            }
+                UUID completedSessionId = null;
+                if (attempted) {
+                    completedSessionId = sessionRepository
+                        .findByUserIdAndExamIdAndStatus(userId, exam.getId(), ExamSession.SessionStatus.SUBMITTED)
+                        .map(ExamSession::getId).orElse(null);
+                }
 
-            String availability = computeAvailability(exam, userTags, now);
-            return new AvailableExamResponse(
-                exam.getId(), exam.getTitle(), exam.getDescription(),
-                exam.getDomain(), exam.getYearLevel(), exam.getTimeLimitSeconds(),
-                exam.getAvailableFrom(), exam.getAvailableUntil(),
-                qCount, exam.getTag(), availability,
-                attempted, completedSessionId
-            );
-        }).filter(java.util.Objects::nonNull).toList();
+                String availability = computeAvailability(exam, userPackages, now);
+                return new AvailableExamResponse(
+                    exam.getId(), exam.getTitle(), exam.getDescription(),
+                    exam.getDomain(), exam.getYearLevel(), exam.getTimeLimitSeconds(),
+                    exam.getAvailableFrom(), exam.getAvailableUntil(),
+                    qCount, exam.getPackageType(), availability,
+                    attempted, completedSessionId
+                );
+            }).filter(java.util.Objects::nonNull).toList();
     }
 
     @Transactional
@@ -141,13 +138,11 @@ public class ExamService {
             throw new BusinessException("Exam is not available");
         }
 
-        // Entitlement check
-        Set<ExamTag> userTags = resolveUserTags(userId);
-        if (!userTags.contains(exam.getTag())) {
-            throw new AccessDeniedException("Upgrade to " + exam.getTag() + " to access this exam");
+        Set<PackageType> userPackages = resolveUserPackages(userId);
+        if (!userPackages.contains(exam.getPackageType())) {
+            throw new AccessDeniedException("Upgrade to " + exam.getPackageType() + " to access this exam");
         }
 
-        // Time window check
         Instant now = Instant.now();
         if (exam.getAvailableFrom() != null && now.isBefore(exam.getAvailableFrom())) {
             throw new BusinessException("Exam not yet open. Opens at " + exam.getAvailableFrom());
@@ -156,7 +151,6 @@ public class ExamService {
             throw new BusinessException("Exam window has closed");
         }
 
-        // One-attempt enforcement
         if (sessionRepository.existsByUserIdAndExamIdAndStatus(
                 userId, examId, ExamSession.SessionStatus.SUBMITTED)) {
             throw new BusinessException("You have already completed this exam");
@@ -221,13 +215,11 @@ public class ExamService {
         return session;
     }
 
-    /** Returns ordered questions for a session — used by the exam player. */
     @Transactional(readOnly = true)
     public List<QuestionSummary> getSessionQuestions(UUID sessionId, UUID userId) {
         ExamSession session = getSession(sessionId, userId);
 
         if (session.getExamId() != null) {
-            // Admin exam: questions in defined order
             return examQuestionRepository.findByExamIdOrdered(session.getExamId()).stream()
                 .map(eq -> {
                     Question q = eq.getQuestion();
@@ -237,7 +229,6 @@ public class ExamService {
                 }).toList();
         }
 
-        // Practice: questions in the shuffled order stored in questionIds
         List<UUID> ids = session.getQuestionIds();
         Map<UUID, Question> qMap = questionRepository.findAllById(ids).stream()
             .collect(Collectors.toMap(Question::getId, q -> q));
@@ -285,7 +276,6 @@ public class ExamService {
     public ExamResultDetailResponse submitExam(UUID sessionId, UUID userId) {
         ExamSession session = getSession(sessionId, userId);
         if (session.getStatus() != ExamSession.SessionStatus.IN_PROGRESS) {
-            // Already submitted — return existing result
             return buildDetailedResult(session);
         }
         session.setStatus(ExamSession.SessionStatus.SUBMITTED);
@@ -328,7 +318,6 @@ public class ExamService {
         Map<UUID, ExamAnswer> answerMap = answers.stream()
             .collect(Collectors.toMap(ExamAnswer::getQuestionId, a -> a));
 
-        // Build question ordering (from exam_questions if admin exam, else from questionIds order)
         List<QuestionSummary> orderedSummaries;
         if (session.getExamId() != null) {
             orderedSummaries = examQuestionRepository.findByExamIdOrdered(session.getExamId()).stream()
@@ -365,7 +354,6 @@ public class ExamService {
             );
         }).toList();
 
-        // Topic breakdown
         Map<String, ExamResultDetailResponse.TopicScore> domainScores = new LinkedHashMap<>();
         for (QuestionSummary qs : orderedSummaries) {
             Question q = qMap.get(qs.id());
@@ -378,7 +366,6 @@ public class ExamService {
                 (a, b) -> new ExamResultDetailResponse.TopicScore(
                     a.correct() + b.correct(), a.total() + b.total(), 0));
         }
-        // Compute percentages
         domainScores.replaceAll((k, v) ->
             new ExamResultDetailResponse.TopicScore(v.correct(), v.total(),
                 v.total() > 0 ? (v.correct() * 100.0 / v.total()) : 0));
@@ -442,14 +429,15 @@ public class ExamService {
             .build());
     }
 
-    private Set<ExamTag> resolveUserTags(UUID userId) {
+    private Set<PackageType> resolveUserPackages(UUID userId) {
         return userRepository.findById(userId)
             .map(User::getTags)
-            .orElse(Set.of(ExamTag.BASIC));
+            .filter(tags -> tags != null && !tags.isEmpty())
+            .orElse(Set.of(PackageType.FREE));
     }
 
-    private String computeAvailability(Exam exam, Set<ExamTag> userTags, Instant now) {
-        if (!userTags.contains(exam.getTag())) return "UPGRADE_REQUIRED";
+    private String computeAvailability(Exam exam, Set<PackageType> userPackages, Instant now) {
+        if (!userPackages.contains(exam.getPackageType())) return "UPGRADE_REQUIRED";
         if (exam.getAvailableFrom() != null && now.isBefore(exam.getAvailableFrom())) return "UPCOMING";
         if (exam.getAvailableUntil() != null && now.isAfter(exam.getAvailableUntil())) return "EXPIRED";
         return "AVAILABLE";

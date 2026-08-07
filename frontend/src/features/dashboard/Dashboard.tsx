@@ -18,7 +18,7 @@ const domainLabel = (d: string) => d.replace(/_/g, ' ')
 
 const tagBadgeClass = (tag: string) => {
   if (tag === 'ADVANCED') return 'badge-green'
-  if (tag === 'PRO') return 'badge-blue'
+  if (tag === 'PREMIUM') return 'badge-blue'
   return 'badge-gray'
 }
 
@@ -120,13 +120,13 @@ export default function Dashboard() {
         </div>
         {subscription && (
           <span className={`badge ${
-            subscription.plan?.slug === 'pro'
+            subscription.plan?.slug === 'pro' || subscription.plan?.slug === 'premium'
               ? 'badge-blue'
               : subscription.plan?.slug === 'advanced'
               ? 'badge-green'
               : 'badge-gray'
           }`}>
-            {subscription.plan?.name || 'Basic'} Plan
+            {subscription.plan?.name || 'Free'} Plan
           </span>
         )}
       </div>
@@ -233,8 +233,8 @@ export default function Dashboard() {
       {/* Available Exams — grouped by tag */}
       {availableExams && availableExams.length > 0 && (
         <div className="space-y-4">
-          {(['BASIC', 'ADVANCED', 'PRO'] as const).map((tag) => {
-            const tagExams = availableExams.filter((e: any) => e.tag === tag)
+          {(['FREE', 'ADVANCED', 'PREMIUM'] as const).map((tag) => {
+            const tagExams = availableExams.filter((e: any) => e.packageType === tag)
             if (tagExams.length === 0) return null
             const readyCount = tagExams.filter((e: any) => e.availability === 'AVAILABLE').length
             const sectionLocked = tagExams.every((e: any) => e.availability === 'UPGRADE_REQUIRED')
@@ -273,8 +273,8 @@ export default function Dashboard() {
                       >
                         <div className="flex items-start justify-between mb-2">
                           <h3 className="font-medium text-gray-800 text-sm leading-tight">{exam.title}</h3>
-                          <span className={`badge text-xs ml-2 flex-shrink-0 ${tagBadgeClass(exam.tag)}`}>
-                            {exam.tag}
+                          <span className={`badge text-xs ml-2 flex-shrink-0 ${tagBadgeClass(exam.packageType)}`}>
+                            {exam.packageType}
                           </span>
                         </div>
                         <p className="text-xs text-gray-500 mb-3">

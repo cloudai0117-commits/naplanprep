@@ -5,7 +5,7 @@ import au.com.naplanprep.auth.repository.UserRepository;
 import au.com.naplanprep.common.exception.BusinessException;
 import au.com.naplanprep.common.exception.ResourceNotFoundException;
 import au.com.naplanprep.config.AppProperties;
-import au.com.naplanprep.exam.entity.ExamTag;
+import au.com.naplanprep.exam.entity.PackageType;
 import au.com.naplanprep.subscription.entity.Plan;
 import au.com.naplanprep.subscription.entity.Subscription;
 import au.com.naplanprep.subscription.repository.PlanRepository;
@@ -310,12 +310,12 @@ public class SubscriptionService {
 
     private void syncUserTagsFromSubscriptions(UUID userId) {
         userRepository.findById(userId).ifPresent(user -> {
-            Set<ExamTag> tags = new HashSet<>();
-            tags.add(ExamTag.BASIC);
+            Set<PackageType> tags = new HashSet<>();
+            tags.add(PackageType.FREE);
             subscriptionRepository.findAllByUserIdAndStatusIn(userId,
                 List.of(Subscription.SubscriptionStatus.ACTIVE, Subscription.SubscriptionStatus.TRIALING))
                 .forEach(sub -> {
-                    ExamTag tag = resolvePlanToTag(sub.getPlan());
+                    PackageType tag = resolvePlanToPackageType(sub.getPlan());
                     if (tag != null) tags.add(tag);
                 });
             user.setTags(tags);
@@ -323,10 +323,11 @@ public class SubscriptionService {
         });
     }
 
-    private ExamTag resolvePlanToTag(Plan plan) {
-        return switch (plan.getName().toUpperCase()) {
-            case "ADVANCED", "STANDARD", "ADVANCE" -> ExamTag.ADVANCED;
-            case "PRO", "PREMIUM", "FAMILY" -> ExamTag.PRO;
+    private PackageType resolvePlanToPackageType(Plan plan) {
+        return switch (plan.getSlug().toLowerCase()) {
+            case "advanced" -> PackageType.ADVANCED;
+            case "premium", "pro" -> PackageType.PREMIUM;
+            case "free", "basic" -> PackageType.FREE;
             default -> null;
         };
     }

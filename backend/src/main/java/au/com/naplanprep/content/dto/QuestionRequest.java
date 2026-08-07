@@ -1,6 +1,7 @@
 package au.com.naplanprep.content.dto;
 
 import au.com.naplanprep.content.entity.Question;
+import au.com.naplanprep.exam.entity.PackageType;
 import jakarta.validation.constraints.*;
 
 import java.util.Map;
@@ -22,6 +23,10 @@ public record QuestionRequest(
     @NotNull(message = "Difficulty band is required")
     @Min(1) @Max(10)
     Integer difficultyBand,
+
+    PackageType packageType,
+
+    Question.Difficulty difficulty,
 
     String stimulusText,
 

@@ -1,5 +1,6 @@
 package au.com.naplanprep.content.entity;
 
+import au.com.naplanprep.exam.entity.PackageType;
 import jakarta.persistence.*;
 import lombok.*;
 import org.hibernate.annotations.CreationTimestamp;
@@ -41,6 +42,16 @@ public class Question {
     @Column(nullable = false)
     private Integer difficultyBand;
 
+    @Enumerated(EnumType.STRING)
+    @Column(name = "package_type", nullable = false)
+    @Builder.Default
+    private PackageType packageType = PackageType.FREE;
+
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false)
+    @Builder.Default
+    private Difficulty difficulty = Difficulty.EASY;
+
     @Column(columnDefinition = "TEXT")
     private String stimulusText;
 
@@ -66,6 +77,7 @@ public class Question {
     private UUID createdBy;
 
     @CreationTimestamp
+    @Column(updatable = false)
     private Instant createdAt;
 
     @UpdateTimestamp
@@ -77,6 +89,10 @@ public class Question {
 
     public enum Domain {
         READING, WRITING, SPELLING, GRAMMAR_PUNCTUATION, NUMERACY
+    }
+
+    public enum Difficulty {
+        EASY, MEDIUM, HARD
     }
 
     public enum QuestionStatus {

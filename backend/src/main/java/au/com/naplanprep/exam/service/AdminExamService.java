@@ -8,6 +8,7 @@ import au.com.naplanprep.content.repository.QuestionRepository;
 import au.com.naplanprep.exam.dto.*;
 import au.com.naplanprep.exam.entity.Exam;
 import au.com.naplanprep.exam.entity.ExamQuestion;
+import au.com.naplanprep.exam.entity.PackageType;
 import au.com.naplanprep.exam.entity.ExamSession;
 import au.com.naplanprep.exam.repository.ExamAnswerRepository;
 import au.com.naplanprep.exam.repository.ExamQuestionRepository;
@@ -44,7 +45,7 @@ public class AdminExamService {
             .description(req.description())
             .yearLevel(req.yearLevel())
             .domain(req.domain())
-            .tag(req.tag())
+            .packageType(req.packageType())
             .timeLimitSeconds(req.timeLimitSeconds())
             .availableFrom(req.availableFrom())
             .availableUntil(req.availableUntil())
@@ -64,7 +65,7 @@ public class AdminExamService {
         exam.setDescription(req.description());
         exam.setYearLevel(req.yearLevel());
         exam.setDomain(req.domain());
-        exam.setTag(req.tag());
+        exam.setPackageType(req.packageType());
         exam.setTimeLimitSeconds(req.timeLimitSeconds());
         exam.setAvailableFrom(req.availableFrom());
         exam.setAvailableUntil(req.availableUntil());
@@ -91,7 +92,7 @@ public class AdminExamService {
             m.put("description", e.getDescription());
             m.put("yearLevel", e.getYearLevel());
             m.put("domain", e.getDomain());
-            m.put("tag", e.getTag());
+            m.put("packageType", e.getPackageType());
             m.put("timeLimitSeconds", e.getTimeLimitSeconds());
             m.put("availableFrom", e.getAvailableFrom());
             m.put("availableUntil", e.getAvailableUntil());
@@ -115,7 +116,7 @@ public class AdminExamService {
         result.put("description", exam.getDescription());
         result.put("yearLevel", exam.getYearLevel());
         result.put("domain", exam.getDomain());
-        result.put("tag", exam.getTag());
+        result.put("packageType", exam.getPackageType());
         result.put("timeLimitSeconds", exam.getTimeLimitSeconds());
         result.put("availableFrom", exam.getAvailableFrom());
         result.put("availableUntil", exam.getAvailableUntil());
@@ -194,8 +195,9 @@ public class AdminExamService {
 
     private void validateStatusTransition(Exam.ExamStatus current, Exam.ExamStatus next) {
         boolean valid = switch (current) {
-            case DRAFT -> next == Exam.ExamStatus.PUBLISHED;
-            case PUBLISHED -> next == Exam.ExamStatus.ARCHIVED || next == Exam.ExamStatus.DRAFT;
+            case DRAFT -> next == Exam.ExamStatus.PUBLISHED || next == Exam.ExamStatus.HIDDEN;
+            case PUBLISHED -> next == Exam.ExamStatus.ARCHIVED || next == Exam.ExamStatus.DRAFT || next == Exam.ExamStatus.HIDDEN;
+            case HIDDEN -> next == Exam.ExamStatus.PUBLISHED || next == Exam.ExamStatus.DRAFT || next == Exam.ExamStatus.ARCHIVED;
             case ARCHIVED -> false;
         };
         if (!valid) {

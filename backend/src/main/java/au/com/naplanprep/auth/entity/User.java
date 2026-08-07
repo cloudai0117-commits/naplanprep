@@ -1,6 +1,6 @@
 package au.com.naplanprep.auth.entity;
 
-import au.com.naplanprep.exam.entity.ExamTag;
+import au.com.naplanprep.exam.entity.PackageType;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.*;
 import lombok.*;
@@ -48,7 +48,7 @@ public class User {
     @Column(name = "tag")
     @Enumerated(EnumType.STRING)
     @Builder.Default
-    private Set<ExamTag> tags = new HashSet<>(Set.of(ExamTag.BASIC));
+    private Set<PackageType> tags = new HashSet<>(Set.of(PackageType.FREE));
 
     private Integer failedLoginAttempts;
 
