@@ -13,6 +13,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -103,21 +104,29 @@ public class ExamService {
             .map(u -> u.getProfile() != null ? u.getProfile().getYearLevel() : null)
             .orElse(null);
 
-        return all.stream()
-            .filter(exam -> userYearLevel == null || exam.getYearLevel() == null || exam.getYearLevel().equals(userYearLevel))
+        List<Exam> filtered = all.stream()
+            .filter(exam -> userYearLevel == null || exam.getYearLevel() == null
+                || exam.getYearLevel().equals(userYearLevel))
+            .toList();
+
+        if (filtered.isEmpty()) return List.of();
+
+        // Batch fetch question counts — one query for all exams instead of N queries
+        List<UUID> examIds = filtered.stream().map(Exam::getId).toList();
+        Map<UUID, Long> qCounts = examQuestionRepository.countByExamIds(examIds).stream()
+            .collect(Collectors.toMap(row -> (UUID) row[0], row -> (Long) row[1]));
+
+        // Batch fetch all SUBMITTED sessions for this user — one query instead of N
+        Map<UUID, UUID> submittedSessionIdByExamId = sessionRepository
+            .findSubmittedByUserIdAndExamIds(userId, examIds).stream()
+            .collect(Collectors.toMap(ExamSession::getExamId, ExamSession::getId));
+
+        return filtered.stream()
+            .filter(exam -> qCounts.getOrDefault(exam.getId(), 0L) > 0)
             .map(exam -> {
-                int qCount = examQuestionRepository.findByExamIdOrdered(exam.getId()).size();
-                if (qCount == 0) return null;
-                boolean attempted = sessionRepository.existsByUserIdAndExamIdAndStatus(
-                    userId, exam.getId(), ExamSession.SessionStatus.SUBMITTED);
-
-                UUID completedSessionId = null;
-                if (attempted) {
-                    completedSessionId = sessionRepository
-                        .findByUserIdAndExamIdAndStatus(userId, exam.getId(), ExamSession.SessionStatus.SUBMITTED)
-                        .map(ExamSession::getId).orElse(null);
-                }
-
+                int qCount = qCounts.getOrDefault(exam.getId(), 0L).intValue();
+                boolean attempted = submittedSessionIdByExamId.containsKey(exam.getId());
+                UUID completedSessionId = submittedSessionIdByExamId.get(exam.getId());
                 String availability = computeAvailability(exam, userPackages, now);
                 return new AvailableExamResponse(
                     exam.getId(), exam.getTitle(), exam.getDescription(),
@@ -126,7 +135,7 @@ public class ExamService {
                     qCount, exam.getPackageType(), availability,
                     attempted, completedSessionId
                 );
-            }).filter(java.util.Objects::nonNull).toList();
+            }).toList();
     }
 
     @Transactional
@@ -244,9 +253,27 @@ public class ExamService {
         return summaries;
     }
 
+    /** Returns all saved answers for a session — used to restore state after disconnect/refresh. */
+    @Transactional(readOnly = true)
+    public List<Map<String, Object>> getSessionAnswers(UUID sessionId, UUID userId) {
+        ExamSession session = sessionRepository.findById(sessionId)
+            .orElseThrow(() -> new ResourceNotFoundException("ExamSession", sessionId.toString()));
+        if (!session.getUserId().equals(userId)) throw new AccessDeniedException("Access denied");
+
+        return answerRepository.findBySessionId(sessionId).stream()
+            .map(a -> {
+                Map<String, Object> m = new LinkedHashMap<>();
+                m.put("questionId", a.getQuestionId());
+                m.put("answer", a.getAnswer());
+                m.put("flagged", a.getFlagged());
+                m.put("timeTakenSeconds", a.getTimeTakenSeconds());
+                return m;
+            }).toList();
+    }
+
     @Transactional
     public ExamAnswer submitAnswer(UUID sessionId, UUID userId, UUID questionId,
-                                   Map<String, Object> answer, Boolean flagged) {
+                                   Map<String, Object> answer, Boolean flagged, Integer timeTakenSeconds) {
         ExamSession session = getSession(sessionId, userId);
         if (session.getStatus() != ExamSession.SessionStatus.IN_PROGRESS) {
             throw new BusinessException("Session is not in progress");
@@ -263,12 +290,14 @@ public class ExamService {
             existing.setAnswer(answer);
             existing.setCorrect(correct);
             if (flagged != null) existing.setFlagged(flagged);
+            if (timeTakenSeconds != null) existing.setTimeTakenSeconds(timeTakenSeconds);
             return answerRepository.save(existing);
         }
         return answerRepository.save(ExamAnswer.builder()
             .sessionId(sessionId).questionId(questionId)
             .answer(answer).correct(correct)
             .flagged(flagged != null ? flagged : false)
+            .timeTakenSeconds(timeTakenSeconds)
             .build());
     }
 
@@ -302,6 +331,29 @@ public class ExamService {
 
     public Page<ExamSession> getHistory(UUID userId, Pageable pageable) {
         return sessionRepository.findByUserIdOrderByCreatedAtDesc(userId, pageable);
+    }
+
+    // ─────────────────────────────────────────────────────────────
+    // Background: expire overdue sessions every 60 seconds
+    // ─────────────────────────────────────────────────────────────
+
+    @Scheduled(fixedDelay = 60_000)
+    public void expireOverdueSessions() {
+        List<ExamSession> expired = sessionRepository.findByStatusAndExpiresAtBefore(
+            ExamSession.SessionStatus.IN_PROGRESS, Instant.now());
+        for (ExamSession session : expired) {
+            try {
+                session.setStatus(ExamSession.SessionStatus.TIMED_OUT);
+                session.setSubmittedAt(Instant.now());
+                sessionRepository.save(session);
+                calculateAndSaveResult(session);
+            } catch (Exception e) {
+                log.warn("Failed to expire session {}: {}", session.getId(), e.getMessage());
+            }
+        }
+        if (!expired.isEmpty()) {
+            log.info("Expired {} overdue exam sessions", expired.size());
+        }
     }
 
     // ─────────────────────────────────────────────────────────────
@@ -395,8 +447,9 @@ public class ExamService {
     }
 
     private ExamResult calculateAndSaveResult(ExamSession session) {
-        if (resultRepository.findBySessionId(session.getId()).isPresent()) {
-            return resultRepository.findBySessionId(session.getId()).get();
+        Optional<ExamResult> existing = resultRepository.findBySessionId(session.getId());
+        if (existing.isPresent()) {
+            return existing.get();
         }
         List<ExamAnswer> answers = answerRepository.findBySessionId(session.getId());
         int total = session.getQuestionIds().size();

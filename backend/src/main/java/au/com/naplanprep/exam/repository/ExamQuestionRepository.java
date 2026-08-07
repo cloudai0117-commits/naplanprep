@@ -6,6 +6,7 @@ import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import java.util.Collection;
 import java.util.List;
 import java.util.UUID;
 
@@ -19,4 +20,8 @@ public interface ExamQuestionRepository extends JpaRepository<ExamQuestion, Exam
     @Modifying
     @Query("DELETE FROM ExamQuestion eq WHERE eq.exam.id = :examId AND eq.question.id = :questionId")
     void deleteByExamIdAndQuestionId(@Param("examId") UUID examId, @Param("questionId") UUID questionId);
+
+    /** Batch count: returns [examId, count] rows for all given exam IDs in one query. */
+    @Query("SELECT eq.exam.id, COUNT(eq) FROM ExamQuestion eq WHERE eq.exam.id IN :examIds GROUP BY eq.exam.id")
+    List<Object[]> countByExamIds(@Param("examIds") Collection<UUID> examIds);
 }

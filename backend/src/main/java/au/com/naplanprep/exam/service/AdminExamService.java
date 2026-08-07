@@ -24,6 +24,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.*;
+import java.util.stream.Collectors;
 
 @Slf4j
 @Service
@@ -85,6 +86,16 @@ public class AdminExamService {
             Exam.ExamStatus status, Integer yearLevel, Question.Domain domain, Pageable pageable) {
 
         Page<Exam> exams = examRepository.findWithFilters(status, yearLevel, domain, pageable);
+        List<UUID> examIds = exams.getContent().stream().map(Exam::getId).toList();
+
+        // Batch fetch question counts and attempt counts — avoids N+1 per page
+        Map<UUID, Long> qCounts = examIds.isEmpty() ? Map.of() :
+            examQuestionRepository.countByExamIds(examIds).stream()
+                .collect(Collectors.toMap(row -> (UUID) row[0], row -> (Long) row[1]));
+        Map<UUID, Long> attemptCounts = examIds.isEmpty() ? Map.of() :
+            examRepository.countAttemptsByExamIds(examIds).stream()
+                .collect(Collectors.toMap(row -> (UUID) row[0], row -> (Long) row[1]));
+
         List<Map<String, Object>> enriched = exams.getContent().stream().map(e -> {
             Map<String, Object> m = new LinkedHashMap<>();
             m.put("id", e.getId());
@@ -97,8 +108,8 @@ public class AdminExamService {
             m.put("availableFrom", e.getAvailableFrom());
             m.put("availableUntil", e.getAvailableUntil());
             m.put("status", e.getStatus());
-            m.put("questionCount", examQuestionRepository.findByExamIdOrdered(e.getId()).size());
-            m.put("attemptCount", examRepository.countAttemptsByExamId(e.getId()));
+            m.put("questionCount", qCounts.getOrDefault(e.getId(), 0L));
+            m.put("attemptCount", attemptCounts.getOrDefault(e.getId(), 0L));
             m.put("createdAt", e.getCreatedAt());
             return m;
         }).toList();

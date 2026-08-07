@@ -3,6 +3,8 @@ package au.com.naplanprep.auth.service;
 import au.com.naplanprep.auth.entity.User;
 import au.com.naplanprep.auth.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.cache.annotation.CacheEvict;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.security.core.userdetails.UserDetailsService;
@@ -25,10 +27,18 @@ public class UserDetailsServiceImpl implements UserDetailsService {
         return buildUserDetails(user);
     }
 
+    /** Cached — eliminates the DB hit on every authenticated request. TTL: 5 minutes. */
+    @Cacheable(value = "userDetails", key = "#id")
     public UserDetails loadUserById(String id) {
         User user = userRepository.findById(UUID.fromString(id))
             .orElseThrow(() -> new UsernameNotFoundException("User not found: " + id));
         return buildUserDetails(user);
+    }
+
+    /** Call this after any change to user status, role, or lock state to force a fresh DB read. */
+    @CacheEvict(value = "userDetails", key = "#userId")
+    public void evictUserCache(String userId) {
+        // cache eviction only
     }
 
     private UserDetails buildUserDetails(User user) {

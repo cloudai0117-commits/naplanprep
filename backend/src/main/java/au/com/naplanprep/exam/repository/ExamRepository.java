@@ -8,6 +8,7 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import java.util.Collection;
 import java.util.List;
 import java.util.UUID;
 
@@ -29,4 +30,8 @@ public interface ExamRepository extends JpaRepository<Exam, UUID> {
 
     @Query("SELECT COUNT(es) FROM ExamSession es WHERE es.examId = :examId AND es.status = 'SUBMITTED'")
     long countAttemptsByExamId(@Param("examId") UUID examId);
+
+    /** Batch attempt count: returns [examId, count] rows for all given exam IDs in one query. */
+    @Query("SELECT es.examId, COUNT(es) FROM ExamSession es WHERE es.examId IN :examIds AND es.status = 'SUBMITTED' GROUP BY es.examId")
+    List<Object[]> countAttemptsByExamIds(@Param("examIds") Collection<UUID> examIds);
 }

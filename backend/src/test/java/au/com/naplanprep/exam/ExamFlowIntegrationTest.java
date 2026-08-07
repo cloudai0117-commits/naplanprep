@@ -105,7 +105,7 @@ class ExamFlowIntegrationTest {
         assertEquals(ExamSession.SessionStatus.IN_PROGRESS, session.getStatus());
         assertEquals(exam.getId(), session.getExamId());
 
-        examService.submitAnswer(sessionId, userId, question.getId(), Map.of("value", "12"), false);
+        examService.submitAnswer(sessionId, userId, question.getId(), Map.of("value", "12"), false, null);
 
         ExamResultDetailResponse result = examService.submitExam(sessionId, userId);
 

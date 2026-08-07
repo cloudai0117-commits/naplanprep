@@ -58,6 +58,16 @@ public class ExamController {
         return ResponseEntity.ok(ApiResponse.success(examService.getSessionQuestions(id, userId)));
     }
 
+    /** Returns all saved answers for a session — used to restore state after disconnect/refresh. */
+    @GetMapping("/sessions/{id}/answers")
+    public ResponseEntity<ApiResponse<List<Map<String, Object>>>> getSessionAnswers(
+        @PathVariable UUID id,
+        @AuthenticationPrincipal UserDetails principal
+    ) {
+        UUID userId = UUID.fromString(principal.getUsername());
+        return ResponseEntity.ok(ApiResponse.success(examService.getSessionAnswers(id, userId)));
+    }
+
     @PostMapping("/sessions/{id}/answer")
     public ResponseEntity<ApiResponse<ExamAnswer>> submitAnswer(
         @PathVariable UUID id,
@@ -69,8 +79,10 @@ public class ExamController {
         @SuppressWarnings("unchecked")
         Map<String, Object> answer = (Map<String, Object>) body.get("answer");
         Boolean flagged = body.containsKey("flagged") ? (Boolean) body.get("flagged") : null;
+        Integer timeTakenSeconds = body.containsKey("timeTakenSeconds")
+            ? ((Number) body.get("timeTakenSeconds")).intValue() : null;
         return ResponseEntity.ok(ApiResponse.success(
-            examService.submitAnswer(id, userId, questionId, answer, flagged)));
+            examService.submitAnswer(id, userId, questionId, answer, flagged, timeTakenSeconds)));
     }
 
     @PostMapping("/sessions/{id}/submit")
@@ -115,17 +127,6 @@ public class ExamController {
 
     @GetMapping("/my-results")
     public ResponseEntity<ApiResponse<Page<ExamSession>>> getMyResults(
-        @AuthenticationPrincipal UserDetails principal,
-        @PageableDefault(size = 20) Pageable pageable
-    ) {
-        UUID userId = UUID.fromString(principal.getUsername());
-        Page<ExamSession> history = examService.getHistory(userId, pageable);
-        return ResponseEntity.ok(ApiResponse.success(history,
-            Map.of("totalElements", history.getTotalElements())));
-    }
-
-    @GetMapping("/history")
-    public ResponseEntity<ApiResponse<Page<ExamSession>>> getHistory(
         @AuthenticationPrincipal UserDetails principal,
         @PageableDefault(size = 20) Pageable pageable
     ) {

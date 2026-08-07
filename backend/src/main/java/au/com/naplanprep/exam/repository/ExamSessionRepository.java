@@ -8,6 +8,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 import java.time.Instant;
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -37,4 +38,10 @@ public interface ExamSessionRepository extends JpaRepository<ExamSession, UUID> 
         @Param("userId") UUID userId,
         @Param("statuses") List<ExamSession.SessionStatus> statuses,
         Pageable pageable);
+
+    /** Batch lookup: all SUBMITTED sessions for a user across multiple exams — one query instead of N. */
+    @Query("SELECT es FROM ExamSession es WHERE es.userId = :userId AND es.examId IN :examIds AND es.status = 'SUBMITTED'")
+    List<ExamSession> findSubmittedByUserIdAndExamIds(
+        @Param("userId") UUID userId,
+        @Param("examIds") Collection<UUID> examIds);
 }
