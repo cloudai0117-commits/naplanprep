@@ -111,12 +111,16 @@ jobs:
           railway_var "CI_SERVICE_PASSWORD"       "${{ secrets.CI_SERVICE_PASSWORD }}"
           echo "Env var step complete (failures are non-fatal — vars persist in Railway)"
 
-      - name: Update Railway service image and start command
+      - name: Update Railway service image (clear startCommand — use Docker ENTRYPOINT)
         run: |
+          # startCommand:null clears any previously set Railway override so that the
+          # Docker ENTRYPOINT (/bin/sh /app/entrypoint.sh) is authoritative.
+          # The old startCommand "java ... -jar app.jar" bypassed entrypoint.sh and
+          # prevented JWT key materialisation — this mutation removes that override.
           curl -sf -X POST "${{ env.RAILWAY_API }}" \
             -H "Content-Type: application/json" \
             -H "Authorization: Bearer ${{ secrets.RAILWAY_TOKEN }}" \
-            -d "{\"query\":\"mutation{serviceInstanceUpdate(serviceId:\\\"${{ env.RAILWAY_BACKEND_SERVICE_ID }}\\\",environmentId:\\\"${{ env.RAILWAY_ENV_ID }}\\\",input:{source:{image:\\\"${{ env.BACKEND_IMAGE }}:${{ needs.build-and-push.outputs.image-tag }}\\\"},startCommand:\\\"java -Dspring.profiles.active=uat -jar /app/app.jar\\\"})}\"}"
+            -d "{\"query\":\"mutation{serviceInstanceUpdate(serviceId:\\\"${{ env.RAILWAY_BACKEND_SERVICE_ID }}\\\",environmentId:\\\"${{ env.RAILWAY_ENV_ID }}\\\",input:{source:{image:\\\"${{ env.BACKEND_IMAGE }}:${{ needs.build-and-push.outputs.image-tag }}\\\"},startCommand:null})}\"}"
 
       - name: Trigger Railway redeployment
         run: |
@@ -125,20 +129,73 @@ jobs:
             -H "Authorization: Bearer ${{ secrets.RAILWAY_TOKEN }}" \
             -d "{\"query\":\"mutation{environmentTriggersDeploy(input:{projectId:\\\"${{ env.RAILWAY_PROJECT_ID }}\\\",environmentId:\\\"${{ env.RAILWAY_ENV_ID }}\\\",serviceId:\\\"${{ env.RAILWAY_BACKEND_SERVICE_ID }}\\\"})}\"}"
 
-      - name: Wait for Railway deployment
+      - name: Poll backend health until UP (deployment health gate)
         run: |
-          echo "Waiting 360s for Railway to pull image, run Flyway V1-V379, and start..."
-          sleep 360
+          # Replace the static 360s sleep with active health polling.
+          # Fails the deploy-backend job if the app doesn't become healthy —
+          # "Deploy Backend = PASS" means the app is actually UP, not just submitted.
+          API_BASE_URL="${{ vars.UAT_API_URL }}"
+          ACTUATOR_BASE_URL="${{ vars.UAT_ACTUATOR_BASE_URL }}"
+          if [ -z "$ACTUATOR_BASE_URL" ] && [ -n "$API_BASE_URL" ]; then
+            ACTUATOR_BASE_URL="${API_BASE_URL%/v1}"
+          fi
 
-      - name: Get Railway deployment status
-        id: domain
-        run: |
-          RESPONSE=$(curl -sf -X POST "${{ env.RAILWAY_API }}" \
-            -H "Content-Type: application/json" \
-            -H "Authorization: Bearer ${{ secrets.RAILWAY_TOKEN }}" \
-            -d '{"query":"{ deployments(input: { projectId: \"${{ env.RAILWAY_PROJECT_ID }}\", environmentId: \"${{ env.RAILWAY_ENV_ID }}\", serviceId: \"${{ env.RAILWAY_BACKEND_SERVICE_ID }}\" }) { edges { node { id status staticUrl } } } }"}')
-          echo "deployment_response=$RESPONSE" >> $GITHUB_OUTPUT
-          echo "$RESPONSE"
+          if [ -z "$ACTUATOR_BASE_URL" ]; then
+            echo "UAT_API_URL not set — skipping health poll (set it in Repository Variables)"
+            echo "Waiting 360s for Railway cold start instead..."
+            sleep 360
+            exit 0
+          fi
+
+          HEALTH_URL="$ACTUATOR_BASE_URL/actuator/health"
+          echo "Health gate: polling $HEALTH_URL (max 8 min, 20s interval)"
+          echo "Waiting 60s initial delay for Railway to pull and start the image..."
+          sleep 60
+
+          for i in $(seq 1 21); do
+            HTTP=$(curl -s -o /tmp/health_deploy.json -w "%{http_code}" \
+              --connect-timeout 10 --max-time 15 "$HEALTH_URL" 2>/dev/null || echo "000")
+            BODY=$(cat /tmp/health_deploy.json 2>/dev/null || echo "{}")
+            STATUS=$(echo "$BODY" | python3 -c \
+              "import sys,json; d=json.load(sys.stdin); print(d.get('status',''))" 2>/dev/null || echo "")
+
+            echo "Attempt $i/21 — HTTP $HTTP — status: ${STATUS:-?}"
+
+            if [ "$HTTP" = "200" ] && [ "$STATUS" = "UP" ]; then
+              echo ""
+              echo "DEPLOYMENT_HEALTH_GATE = PASS — backend is UP"
+              exit 0
+            fi
+
+            if [ "$HTTP" = "502" ] || [ "$HTTP" = "503" ]; then
+              if [ "$i" -ge 3 ]; then
+                echo ""
+                echo "RAILWAY_BACKEND_UNHEALTHY — HTTP $HTTP persists after $((i * 20 + 60))s"
+                echo "The application failed to start. Check Railway deployment logs."
+                echo "Common causes:"
+                echo "  - JWT_PRIVATE_KEY or JWT_PUBLIC_KEY Railway Variable not set"
+                echo "  - BeanCreationException for jwtTokenProvider"
+                echo "  - Flyway migration failure"
+                echo "  - Database connection failure"
+                if [ "$HTTP" = "502" ]; then
+                  echo "HTTP 502 = Railway gateway — container did not start successfully"
+                fi
+                exit 1
+              fi
+            fi
+
+            if [ "$HTTP" = "000" ]; then
+              echo "  (connection refused / timeout — Railway may still be pulling image)"
+            fi
+
+            echo "  Retrying in 20s..."
+            sleep 20
+          done
+
+          echo ""
+          echo "TIMEOUT: Backend did not reach UP status within 8 minutes"
+          echo "Railway deployment may still be in progress — check Railway dashboard"
+          exit 1
 
   # ─────────────────────────────────────────────────────────────────────────────
   # DB INTEGRITY GATE

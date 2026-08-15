@@ -10,6 +10,7 @@ import org.springframework.core.env.Environment;
 import org.springframework.core.io.ResourceLoader;
 import org.springframework.stereotype.Component;
 
+import java.nio.charset.StandardCharsets;
 import java.security.*;
 import java.security.spec.*;
 import java.util.Base64;
@@ -30,16 +31,43 @@ public class JwtTokenProvider {
 
     @PostConstruct
     public void init() {
+        // Mode 1: PEM content from environment variables (Railway/cloud deployment).
+        // JWT_PRIVATE_KEY and JWT_PUBLIC_KEY hold the full PEM text.
+        // This is checked first so it wins over any app.jwt.*-key-path configuration
+        // that may be set in Railway Variables (e.g. a stale APP_JWT_PRIVATE_KEY_PATH).
+        String privKeyEnv = System.getenv("JWT_PRIVATE_KEY");
+        String pubKeyEnv  = System.getenv("JWT_PUBLIC_KEY");
+        log.info("JWT_PRIVATE_KEY configured = {}", privKeyEnv != null && !privKeyEnv.isBlank());
+        log.info("JWT_PUBLIC_KEY configured = {}",  pubKeyEnv  != null && !pubKeyEnv.isBlank());
+
+        if (privKeyEnv != null && !privKeyEnv.isBlank()
+                && pubKeyEnv != null && !pubKeyEnv.isBlank()) {
+            try {
+                privateKey = loadPrivateKey(privKeyEnv);
+                publicKey  = loadPublicKey(pubKeyEnv);
+                log.info("JWT RSA keys loaded from environment variables (JWT_PRIVATE_KEY / JWT_PUBLIC_KEY)");
+                return;
+            } catch (Exception e) {
+                throw new IllegalStateException(
+                    "JWT_PRIVATE_KEY / JWT_PUBLIC_KEY are set but could not be parsed as RSA PEM. " +
+                    "Verify that the values are PKCS#8 private key and X.509 public key PEM. " +
+                    "Cause: " + e.getMessage(), e);
+            }
+        }
+
+        // Mode 2: path/resource-based loading via app.jwt.private-key-path / public-key-path.
+        // Used by local dev (classpath:keys/dev-private.pem) and test profile (classpath:jwt/test-*.pem).
         try {
             var props = appProperties.getJwt();
             privateKey = loadPrivateKey(props.getPrivateKeyPath());
-            publicKey = loadPublicKey(props.getPublicKeyPath());
+            publicKey  = loadPublicKey(props.getPublicKeyPath());
         } catch (Exception e) {
             for (String profile : environment.getActiveProfiles()) {
                 if ("uat".equals(profile) || "prod".equals(profile)) {
                     throw new IllegalStateException(
                         "JWT RSA keys are required in " + profile + " profile. " +
-                        "Set app.jwt.private-key-path and app.jwt.public-key-path. " +
+                        "Set JWT_PRIVATE_KEY and JWT_PUBLIC_KEY environment variables (preferred), " +
+                        "or set app.jwt.private-key-path and app.jwt.public-key-path. " +
                         "Cause: " + e.getMessage(), e);
                 }
             }
@@ -54,36 +82,39 @@ public class JwtTokenProvider {
             gen.initialize(2048);
             KeyPair pair = gen.generateKeyPair();
             privateKey = pair.getPrivate();
-            publicKey = pair.getPublic();
+            publicKey  = pair.getPublic();
         } catch (NoSuchAlgorithmException e) {
             throw new RuntimeException("Failed to generate RSA keys", e);
         }
     }
 
-    private PrivateKey loadPrivateKey(String path) throws Exception {
-        byte[] keyBytes = readKeyFile(path);
-        String keyStr = new String(keyBytes)
+    private PrivateKey loadPrivateKey(String pathOrPem) throws Exception {
+        byte[] keyBytes = readKeyContent(pathOrPem);
+        String keyStr = new String(keyBytes, StandardCharsets.UTF_8)
             .replace("-----BEGIN PRIVATE KEY-----", "")
             .replace("-----END PRIVATE KEY-----", "")
             .replaceAll("\\s", "");
         byte[] decoded = Base64.getDecoder().decode(keyStr);
-        KeyFactory kf = KeyFactory.getInstance("RSA");
-        return kf.generatePrivate(new PKCS8EncodedKeySpec(decoded));
+        return KeyFactory.getInstance("RSA").generatePrivate(new PKCS8EncodedKeySpec(decoded));
     }
 
-    private PublicKey loadPublicKey(String path) throws Exception {
-        byte[] keyBytes = readKeyFile(path);
-        String keyStr = new String(keyBytes)
+    private PublicKey loadPublicKey(String pathOrPem) throws Exception {
+        byte[] keyBytes = readKeyContent(pathOrPem);
+        String keyStr = new String(keyBytes, StandardCharsets.UTF_8)
             .replace("-----BEGIN PUBLIC KEY-----", "")
             .replace("-----END PUBLIC KEY-----", "")
             .replaceAll("\\s", "");
         byte[] decoded = Base64.getDecoder().decode(keyStr);
-        KeyFactory kf = KeyFactory.getInstance("RSA");
-        return kf.generatePublic(new X509EncodedKeySpec(decoded));
+        return KeyFactory.getInstance("RSA").generatePublic(new X509EncodedKeySpec(decoded));
     }
 
-    private byte[] readKeyFile(String path) throws Exception {
-        var resource = resourceLoader.getResource(path);
+    private byte[] readKeyContent(String pathOrPem) throws Exception {
+        // Inline PEM content passed directly (from env var or init() env-var mode)
+        if (pathOrPem != null && pathOrPem.startsWith("-----BEGIN")) {
+            return pathOrPem.getBytes(StandardCharsets.UTF_8);
+        }
+        // File/classpath resource path (classpath:..., file:..., etc.)
+        var resource = resourceLoader.getResource(pathOrPem);
         return resource.getInputStream().readAllBytes();
     }
 
