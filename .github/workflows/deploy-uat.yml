@@ -189,76 +189,76 @@ jobs:
           cat /tmp/db_integrity.json | python3 -m json.tool 2>/dev/null || cat /tmp/db_integrity.json
 
           python3 << 'EOF'
-import json, sys
+          import json, sys
 
-with open('/tmp/db_integrity.json') as f:
-    data = json.load(f)
+          with open('/tmp/db_integrity.json') as f:
+              data = json.load(f)
 
-details = data.get('details', {})
-component_status = data.get('status', 'UNKNOWN')
+          details = data.get('details', {})
+          component_status = data.get('status', 'UNKNOWN')
 
-print()
-print("=== DB INTEGRITY CHECK RESULTS ===")
-print(f"Component status: {component_status}")
-print()
+          print()
+          print("=== DB INTEGRITY CHECK RESULTS ===")
+          print(f"Component status: {component_status}")
+          print()
 
-# Print all detail fields with FAIL markers
-for k in sorted(details.keys()):
-    flag = " *** FAIL ***" if "FAIL" in str(k) else ""
-    print(f"  {k}: {details[k]}{flag}")
+          # Print all detail fields with FAIL markers
+          for k in sorted(details.keys()):
+              flag = " *** FAIL ***" if "FAIL" in str(k) else ""
+              print(f"  {k}: {details[k]}{flag}")
 
-# Check if component itself returned DOWN
-if component_status == "DOWN":
-    fail_keys = [k for k in details if "FAIL" in str(k)]
-    print()
-    print("=== DEPLOYMENT BLOCKED — DbIntegrityHealthIndicator returned DOWN ===")
-    for k in fail_keys:
-        print(f"  {k}: {details[k]}")
-    sys.exit(1)
+          # Check if component itself returned DOWN
+          if component_status == "DOWN":
+              fail_keys = [k for k in details if "FAIL" in str(k)]
+              print()
+              print("=== DEPLOYMENT BLOCKED — DbIntegrityHealthIndicator returned DOWN ===")
+              for k in fail_keys:
+                  print(f"  {k}: {details[k]}")
+              sys.exit(1)
 
-# Verify canonical expected counts from details
-failures = []
-checks = {
-    'published_total':              (320, "Expected 320 PUBLISHED exams"),
-    'year_3':                       (80,  "Expected 80 Year 3 exams"),
-    'year_5':                       (80,  "Expected 80 Year 5 exams"),
-    'year_7':                       (80,  "Expected 80 Year 7 exams"),
-    'year_9':                       (80,  "Expected 80 Year 9 exams"),
-    'package_FREE':                 (20,  "Expected 20 FREE exams"),
-    'package_ADVANCED':             (100, "Expected 100 ADVANCED exams"),
-    'package_PREMIUM':              (200, "Expected 200 PREMIUM exams"),
-    'year_domain_pairs_wrong_count':(0,   "All year/domain pairs must have exactly 16 exams"),
-    'published_without_questions':  (0,   "Zero published exams with no questions"),
-    'audio_response_spelling':      (0,   "Zero AUDIO_RESPONSE in Spelling domain"),
-}
+          # Verify canonical expected counts from details
+          failures = []
+          checks = {
+              'published_total':              (320, "Expected 320 PUBLISHED exams"),
+              'year_3':                       (80,  "Expected 80 Year 3 exams"),
+              'year_5':                       (80,  "Expected 80 Year 5 exams"),
+              'year_7':                       (80,  "Expected 80 Year 7 exams"),
+              'year_9':                       (80,  "Expected 80 Year 9 exams"),
+              'package_FREE':                 (20,  "Expected 20 FREE exams"),
+              'package_ADVANCED':             (100, "Expected 100 ADVANCED exams"),
+              'package_PREMIUM':              (200, "Expected 200 PREMIUM exams"),
+              'year_domain_pairs_wrong_count':(0,   "All year/domain pairs must have exactly 16 exams"),
+              'published_without_questions':  (0,   "Zero published exams with no questions"),
+              'audio_response_spelling':      (0,   "Zero AUDIO_RESPONSE in Spelling domain"),
+          }
 
-for key, (expected, msg) in checks.items():
-    actual = details.get(key)
-    if actual is None:
-        failures.append(f"MISSING metric '{key}'\n    Expected: {expected}\n    Actual:   (not in response)\n    Check:    {msg}")
-    elif int(actual) != expected:
-        failures.append(f"FAIL: {key}\n    Expected: {expected}\n    Actual:   {actual}\n    Check:    {msg}")
-    else:
-        print(f"  PASS: {key} = {actual} ✓")
+          for key, (expected, msg) in checks.items():
+              actual = details.get(key)
+              if actual is None:
+                  failures.append(f"MISSING metric '{key}'\n    Expected: {expected}\n    Actual:   (not in response)\n    Check:    {msg}")
+              elif int(actual) != expected:
+                  failures.append(f"FAIL: {key}\n    Expected: {expected}\n    Actual:   {actual}\n    Check:    {msg}")
+              else:
+                  print(f"  PASS: {key} = {actual} ✓")
 
-if failures:
-    print()
-    print("=== DEPLOYMENT BLOCKED ===")
-    for f in failures:
-        print(f"  {f}")
-    sys.exit(1)
+          if failures:
+              print()
+              print("=== DEPLOYMENT BLOCKED ===")
+              for f in failures:
+                  print(f"  {f}")
+              sys.exit(1)
 
-print()
-print("=== ALL CANONICAL COUNTS VERIFIED ===")
-print("  PUBLISHED_EXAMS       = 320  ✓")
-print("  YEAR_3/5/7/9          = 80 each  ✓")
-print("  FREE/ADVANCED/PREMIUM = 20/100/200  ✓")
-print("  YEAR_DOMAIN_PAIRS     = 16 each  ✓")
-print("  EMPTY_PUBLISHED_EXAMS = 0  ✓")
-print("  AUDIO_RESPONSE_SPELL  = 0  ✓")
-print()
-print("DB_INTEGRITY_GATE = PASS")
-EOF
+          print()
+          print("=== ALL CANONICAL COUNTS VERIFIED ===")
+          print("  PUBLISHED_EXAMS       = 320  ✓")
+          print("  YEAR_3/5/7/9          = 80 each  ✓")
+          print("  FREE/ADVANCED/PREMIUM = 20/100/200  ✓")
+          print("  YEAR_DOMAIN_PAIRS     = 16 each  ✓")
+          print("  EMPTY_PUBLISHED_EXAMS = 0  ✓")
+          print("  AUDIO_RESPONSE_SPELL  = 0  ✓")
+          print()
+          print("DB_INTEGRITY_GATE = PASS")
+          EOF
 
   deploy-frontend:
     name: Deploy Frontend to Vercel
