@@ -23,6 +23,7 @@ jobs:
       packages: write
     outputs:
       image-tag: ${{ steps.tag.outputs.tag }}
+      backend-digest: ${{ steps.build-backend.outputs.digest }}
 
     steps:
       - uses: actions/checkout@v4.2.2
@@ -42,6 +43,7 @@ jobs:
         uses: docker/setup-buildx-action@v3.11.1
 
       - name: Build & push backend
+        id: build-backend
         uses: docker/build-push-action@v6.18.0
         with:
           context: ./backend
@@ -79,12 +81,45 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
+      - name: Verify GHCR push artifacts
+        run: |
+          TAG="${{ steps.tag.outputs.tag }}"
+          DIGEST="${{ steps.build-backend.outputs.digest }}"
+          IMAGE="${{ env.BACKEND_IMAGE }}:$TAG"
+          echo "===== GHCR PUSH VERIFICATION ====="
+          echo "COMMIT_SHA=${{ github.sha }}"
+          echo "BACKEND_IMAGE_TAG=$TAG"
+          echo "BACKEND_IMAGE_DIGEST=${DIGEST:-MISSING}"
+          echo "FULL_IMAGE_REF=$IMAGE"
+          if [ -z "$DIGEST" ]; then
+            echo "FAIL: backend image digest is empty — GHCR push did not succeed"
+            exit 1
+          fi
+          echo "GHCR_PUSH = PASS"
+
   deploy-backend:
     name: Deploy Backend to Railway
     runs-on: ubuntu-latest
     needs: build-and-push
 
     steps:
+      - name: Deployment diagnostic header
+        run: |
+          TAG="${{ needs.build-and-push.outputs.image-tag }}"
+          DIGEST="${{ needs.build-and-push.outputs.backend-digest }}"
+          IMAGE="${{ env.BACKEND_IMAGE }}:$TAG"
+          echo "===== DEPLOYMENT PLAN ====="
+          echo "COMMIT_SHA=${{ github.sha }}"
+          echo "BACKEND_IMAGE_TAG=$TAG"
+          echo "BACKEND_IMAGE_DIGEST=${DIGEST:-MISSING}"
+          echo "EXPECTED_IMAGE=$IMAGE"
+          echo "RAILWAY_SERVICE_ID=${{ env.RAILWAY_BACKEND_SERVICE_ID }}"
+          echo "RAILWAY_ENV_ID=${{ env.RAILWAY_ENV_ID }}"
+          if [ -z "$DIGEST" ]; then
+            echo "FAIL: No image digest from build-and-push — aborting before touching Railway"
+            exit 1
+          fi
+
       - name: Set env vars on Railway
         run: |
           # Only upsert if value is non-empty — preserves existing Railway values
@@ -106,34 +141,239 @@ jobs:
           railway_var "STRIPE_ADVANCED_PRICE_ID"  "${{ secrets.STRIPE_TEST_ADVANCED_PRICE_ID }}"
           railway_var "STRIPE_PRO_PRICE_ID"       "${{ secrets.STRIPE_TEST_PRO_PRICE_ID }}"
           railway_var "SPRING_PROFILES_ACTIVE"    "uat"
-          # CI service account — bootstrapped by CiServiceAccountBootstrap at startup
           railway_var "CI_SERVICE_EMAIL"          "${{ secrets.CI_SERVICE_EMAIL }}"
           railway_var "CI_SERVICE_PASSWORD"       "${{ secrets.CI_SERVICE_PASSWORD }}"
           echo "Env var step complete (failures are non-fatal — vars persist in Railway)"
 
-      - name: Update Railway service image (clear startCommand — use Docker ENTRYPOINT)
+      - name: Update Railway service source image
+        # Sets the GHCR image that Railway will use on the next deploy.
+        # Uses the immutable uat-<sha> tag (not the mutable uat-latest alias).
+        # Clears startCommand so Docker ENTRYPOINT (entrypoint.sh) is authoritative —
+        # the old startCommand "java ... -jar app.jar" bypassed entrypoint.sh.
+        # GraphQL always returns HTTP 200; check the response body for errors explicitly.
         run: |
-          # startCommand:null clears any previously set Railway override so that the
-          # Docker ENTRYPOINT (/bin/sh /app/entrypoint.sh) is authoritative.
-          # The old startCommand "java ... -jar app.jar" bypassed entrypoint.sh and
-          # prevented JWT key materialisation — this mutation removes that override.
-          curl -sf -X POST "${{ env.RAILWAY_API }}" \
-            -H "Content-Type: application/json" \
-            -H "Authorization: Bearer ${{ secrets.RAILWAY_TOKEN }}" \
-            -d "{\"query\":\"mutation{serviceInstanceUpdate(serviceId:\\\"${{ env.RAILWAY_BACKEND_SERVICE_ID }}\\\",environmentId:\\\"${{ env.RAILWAY_ENV_ID }}\\\",input:{source:{image:\\\"${{ env.BACKEND_IMAGE }}:${{ needs.build-and-push.outputs.image-tag }}\\\"},startCommand:null})}\"}"
+          TAG="${{ needs.build-and-push.outputs.image-tag }}"
+          IMAGE="${{ env.BACKEND_IMAGE }}:$TAG"
+          echo "Setting Railway service source image to: $IMAGE"
 
-      - name: Trigger Railway redeployment
-        run: |
-          curl -sf -X POST "${{ env.RAILWAY_API }}" \
+          UPDATE_RESP=$(curl -s --max-time 30 -X POST "${{ env.RAILWAY_API }}" \
             -H "Content-Type: application/json" \
             -H "Authorization: Bearer ${{ secrets.RAILWAY_TOKEN }}" \
-            -d "{\"query\":\"mutation{environmentTriggersDeploy(input:{projectId:\\\"${{ env.RAILWAY_PROJECT_ID }}\\\",environmentId:\\\"${{ env.RAILWAY_ENV_ID }}\\\",serviceId:\\\"${{ env.RAILWAY_BACKEND_SERVICE_ID }}\\\"})}\"}"
+            -d "{\"query\":\"mutation{serviceInstanceUpdate(serviceId:\\\"${{ env.RAILWAY_BACKEND_SERVICE_ID }}\\\",environmentId:\\\"${{ env.RAILWAY_ENV_ID }}\\\",input:{source:{image:\\\"$IMAGE\\\"},startCommand:null})}\"}")
+
+          echo "serviceInstanceUpdate response:"
+          echo "$UPDATE_RESP" | python3 -m json.tool 2>/dev/null || echo "$UPDATE_RESP"
+
+          GQL_ERRORS=$(echo "$UPDATE_RESP" | python3 -c "
+import sys, json
+try:
+    d = json.load(sys.stdin)
+    errs = d.get('errors', [])
+    if errs:
+        print('ERRORS: ' + json.dumps(errs))
+    else:
+        print('OK')
+except Exception as e:
+    print('PARSE_ERROR: ' + str(e))
+" 2>/dev/null || echo "PARSE_ERROR")
+
+          if [ "$GQL_ERRORS" != "OK" ]; then
+            echo "FAIL: serviceInstanceUpdate returned GraphQL errors"
+            echo "$GQL_ERRORS"
+            echo "This is why Railway keeps running the old image."
+            echo "Check that RAILWAY_TOKEN has write access to this service."
+            exit 1
+          fi
+          echo "SERVICE_IMAGE_UPDATE = PASS — Railway service configured for $IMAGE"
+
+      - name: Trigger Railway deployment
+        id: trigger-deploy
+        # Triggers a new deployment using the image just set above.
+        # Captures the deployment ID for status polling.
+        run: |
+          TAG="${{ needs.build-and-push.outputs.image-tag }}"
+          IMAGE="${{ env.BACKEND_IMAGE }}:$TAG"
+
+          TRIGGER_RESP=$(curl -s --max-time 30 -X POST "${{ env.RAILWAY_API }}" \
+            -H "Content-Type: application/json" \
+            -H "Authorization: Bearer ${{ secrets.RAILWAY_TOKEN }}" \
+            -d "{\"query\":\"mutation{environmentTriggersDeploy(input:{projectId:\\\"${{ env.RAILWAY_PROJECT_ID }}\\\",environmentId:\\\"${{ env.RAILWAY_ENV_ID }}\\\",serviceId:\\\"${{ env.RAILWAY_BACKEND_SERVICE_ID }}\\\"})}\"}")
+
+          echo "environmentTriggersDeploy response:"
+          echo "$TRIGGER_RESP" | python3 -m json.tool 2>/dev/null || echo "$TRIGGER_RESP"
+
+          GQL_ERRORS=$(echo "$TRIGGER_RESP" | python3 -c "
+import sys, json
+try:
+    d = json.load(sys.stdin)
+    errs = d.get('errors', [])
+    if errs:
+        print('ERRORS: ' + json.dumps(errs))
+    else:
+        print('OK')
+except Exception as e:
+    print('PARSE_ERROR: ' + str(e))
+" 2>/dev/null || echo "PARSE_ERROR")
+
+          if [ "$GQL_ERRORS" != "OK" ]; then
+            echo "FAIL: environmentTriggersDeploy returned GraphQL errors: $GQL_ERRORS"
+            exit 1
+          fi
+
+          # Give Railway ~15s to register the deployment in its API
+          echo "Waiting 15s for Railway to register the new deployment..."
+          sleep 15
+
+          # Query for the latest deployment on this service — save to file for Python parsing
+          curl -s --max-time 30 -X POST "${{ env.RAILWAY_API }}" \
+            -H "Content-Type: application/json" \
+            -H "Authorization: Bearer ${{ secrets.RAILWAY_TOKEN }}" \
+            -d "{\"query\":\"{deployments(input:{serviceId:\\\"${{ env.RAILWAY_BACKEND_SERVICE_ID }}\\\",environmentId:\\\"${{ env.RAILWAY_ENV_ID }}\\\"}){edges{node{id status createdAt image}}}}\"}" \
+            > /tmp/deploys.json
+
+          echo "Deployments query response:"
+          cat /tmp/deploys.json | python3 -m json.tool 2>/dev/null || cat /tmp/deploys.json
+
+          # Extract deployment ID and image; write to GITHUB_OUTPUT
+          python3 - "$IMAGE" "$GITHUB_OUTPUT" << 'PYEOF'
+import sys, json
+
+expected_image = sys.argv[1]
+output_file   = sys.argv[2]
+
+with open('/tmp/deploys.json') as f:
+    try:
+        d = json.load(f)
+    except Exception as e:
+        print(f"PARSE_ERROR reading /tmp/deploys.json: {e}")
+        sys.exit(1)
+
+edges = d.get('data', {}).get('deployments', {}).get('edges', [])
+if not edges:
+    print("FAIL: No deployments found for this service after triggering")
+    sys.exit(1)
+
+latest        = edges[0]['node']
+deploy_id     = latest.get('id', '')
+deploy_status = latest.get('status', 'UNKNOWN')
+deploy_image  = latest.get('image', '') or ''
+deploy_created = latest.get('createdAt', '')
+
+print(f"RAILWAY_DEPLOYMENT_ID={deploy_id}")
+print(f"RAILWAY_DEPLOYMENT_STATUS={deploy_status}")
+print(f"RAILWAY_DEPLOYED_IMAGE={deploy_image or '<not yet populated>'}")
+print(f"RAILWAY_DEPLOYMENT_CREATED={deploy_created}")
+
+with open(output_file, 'a') as f:
+    f.write(f"deployment-id={deploy_id}\n")
+    f.write(f"deployed-image={deploy_image}\n")
+
+if deploy_image and deploy_image == expected_image:
+    print("IMAGE_MATCH=PASS")
+elif deploy_image:
+    print(f"IMAGE_MATCH=WARN — Railway reports '{deploy_image}', expected '{expected_image}'")
+else:
+    print("IMAGE_MATCH=UNKNOWN — image field empty in API response (normal for QUEUED state)")
+
+if not deploy_id:
+    print("FAIL: deployment id is empty")
+    sys.exit(1)
+
+# Fail if Railway's API reports a different image than what we pushed
+if deploy_image and deploy_image != expected_image:
+    print(f"FAIL: Railway is deploying '{deploy_image}' but we pushed '{expected_image}'")
+    print("      This means serviceInstanceUpdate did not take effect.")
+    print("      Check that RAILWAY_TOKEN has write access to this service.")
+    sys.exit(1)
+PYEOF
+
+      - name: Poll Railway deployment status until ACTIVE/SUCCESS
+        # Do not health-poll until Railway itself says the deployment is done.
+        # Terminal success:  SUCCESS, ACTIVE
+        # Terminal failure:  FAILED, CRASHED, REMOVED, ERROR
+        # In-progress:       QUEUED, INITIALIZING, BUILDING, DEPLOYING, SLEEPING
+        run: |
+          DEPLOY_ID="${{ steps.trigger-deploy.outputs.deployment-id }}"
+          echo "Polling Railway deployment $DEPLOY_ID for SUCCESS/ACTIVE (max 15 min, 20s interval)..."
+          echo "Terminal success statuses: SUCCESS, ACTIVE"
+          echo "Terminal failure statuses: FAILED, CRASHED, REMOVED, ERROR"
+
+          for i in $(seq 1 45); do
+            STATUS_RESP=$(curl -s --max-time 30 -X POST "${{ env.RAILWAY_API }}" \
+              -H "Content-Type: application/json" \
+              -H "Authorization: Bearer ${{ secrets.RAILWAY_TOKEN }}" \
+              -d "{\"query\":\"{deployment(id:\\\"$DEPLOY_ID\\\"){id status createdAt}}\"}")
+
+            DEP_STATUS=$(echo "$STATUS_RESP" | python3 -c "
+import sys, json
+d = json.load(sys.stdin)
+print(d.get('data', {}).get('deployment', {}).get('status', 'UNKNOWN'))
+" 2>/dev/null || echo "UNKNOWN")
+
+            echo "Attempt $i/45 — Railway deployment $DEPLOY_ID status: $DEP_STATUS"
+
+            case "$DEP_STATUS" in
+              SUCCESS|ACTIVE)
+                echo ""
+                echo "RAILWAY_DEPLOYMENT_STATUS=$DEP_STATUS"
+                echo "RAILWAY_DEPLOYMENT = PASS — deployment reached $DEP_STATUS"
+                break
+                ;;
+              FAILED|CRASHED|REMOVED|ERROR)
+                echo ""
+                echo "FAIL: Railway deployment $DEPLOY_ID reached terminal failure: $DEP_STATUS"
+                echo "RAILWAY_DEPLOYMENT_ID=$DEPLOY_ID"
+                echo "RAILWAY_DEPLOYMENT_STATUS=$DEP_STATUS"
+                echo "Check Railway dashboard logs for this deployment."
+                exit 1
+                ;;
+              UNKNOWN)
+                echo "  (Could not parse status — check Railway API response)"
+                echo "  Raw response: $STATUS_RESP"
+                ;;
+            esac
+
+            if [ "$i" -eq 45 ]; then
+              echo ""
+              echo "TIMEOUT: Railway deployment $DEPLOY_ID did not reach SUCCESS within 15 minutes"
+              echo "Last known status: $DEP_STATUS"
+              exit 1
+            fi
+
+            echo "  Retrying in 20s..."
+            sleep 20
+          done
+
+      - name: Print deployment summary before health poll
+        run: |
+          TAG="${{ needs.build-and-push.outputs.image-tag }}"
+          DIGEST="${{ needs.build-and-push.outputs.backend-digest }}"
+          IMAGE="${{ env.BACKEND_IMAGE }}:$TAG"
+          DEPLOY_ID="${{ steps.trigger-deploy.outputs.deployment-id }}"
+          DEPLOYED_IMAGE="${{ steps.trigger-deploy.outputs.deployed-image }}"
+
+          echo "===== DEPLOYMENT SUMMARY ====="
+          echo "COMMIT_SHA=${{ github.sha }}"
+          echo "BACKEND_IMAGE_TAG=$TAG"
+          echo "BACKEND_IMAGE_DIGEST=$DIGEST"
+          echo "EXPECTED_IMAGE=$IMAGE"
+          echo ""
+          echo "RAILWAY_DEPLOYMENT_ID=$DEPLOY_ID"
+          echo "RAILWAY_DEPLOYED_IMAGE=${DEPLOYED_IMAGE:-<see Railway dashboard>}"
+          echo ""
+          if [ -n "$DEPLOYED_IMAGE" ] && [ "$DEPLOYED_IMAGE" = "$IMAGE" ]; then
+            echo "IMAGE_MATCH=PASS"
+          elif [ -n "$DEPLOYED_IMAGE" ]; then
+            echo "IMAGE_MATCH=WARN (Railway field: $DEPLOYED_IMAGE vs expected: $IMAGE)"
+          else
+            echo "IMAGE_MATCH=UNKNOWN (Railway did not populate image field)"
+          fi
+          echo "RAILWAY_DEPLOYMENT=PASS (reached SUCCESS/ACTIVE)"
 
       - name: Poll backend health until UP (deployment health gate)
+        # Railway deployment is confirmed SUCCESS/ACTIVE — now verify the app itself.
+        # Fails the job if the app doesn't report UP — backend crash is not a PASS.
         run: |
-          # Replace the static 360s sleep with active health polling.
-          # Fails the deploy-backend job if the app doesn't become healthy —
-          # "Deploy Backend = PASS" means the app is actually UP, not just submitted.
           API_BASE_URL="${{ vars.UAT_API_URL }}"
           ACTUATOR_BASE_URL="${{ vars.UAT_ACTUATOR_BASE_URL }}"
           if [ -z "$ACTUATOR_BASE_URL" ] && [ -n "$API_BASE_URL" ]; then
@@ -142,15 +382,16 @@ jobs:
 
           if [ -z "$ACTUATOR_BASE_URL" ]; then
             echo "UAT_API_URL not set — skipping health poll (set it in Repository Variables)"
-            echo "Waiting 360s for Railway cold start instead..."
-            sleep 360
+            echo "Waiting 120s for Railway cold start instead..."
+            sleep 120
             exit 0
           fi
 
           HEALTH_URL="$ACTUATOR_BASE_URL/actuator/health"
           echo "Health gate: polling $HEALTH_URL (max 8 min, 20s interval)"
-          echo "Waiting 60s initial delay for Railway to pull and start the image..."
-          sleep 60
+          echo "Railway deployment is already ACTIVE — app should be reachable shortly."
+          echo "Waiting 30s initial delay for Tomcat to bind port..."
+          sleep 30
 
           for i in $(seq 1 21); do
             HTTP=$(curl -s -o /tmp/health_deploy.json -w "%{http_code}" \
@@ -163,6 +404,8 @@ jobs:
 
             if [ "$HTTP" = "200" ] && [ "$STATUS" = "UP" ]; then
               echo ""
+              echo "BACKEND_HEALTH_HTTP=200"
+              echo "BACKEND_HEALTH_STATUS=UP"
               echo "DEPLOYMENT_HEALTH_GATE = PASS — backend is UP"
               exit 0
             fi
@@ -170,7 +413,7 @@ jobs:
             if [ "$HTTP" = "502" ] || [ "$HTTP" = "503" ]; then
               if [ "$i" -ge 3 ]; then
                 echo ""
-                echo "RAILWAY_BACKEND_UNHEALTHY — HTTP $HTTP persists after $((i * 20 + 60))s"
+                echo "RAILWAY_BACKEND_UNHEALTHY — HTTP $HTTP persists after $((i * 20 + 30))s"
                 echo "The application failed to start. Check Railway deployment logs."
                 echo "Common causes:"
                 echo "  - JWT_PRIVATE_KEY or JWT_PUBLIC_KEY Railway Variable not set"
@@ -180,12 +423,14 @@ jobs:
                 if [ "$HTTP" = "502" ]; then
                   echo "HTTP 502 = Railway gateway — container did not start successfully"
                 fi
+                echo "BACKEND_HEALTH_HTTP=$HTTP"
+                echo "BACKEND_HEALTH_STATUS=DOWN"
                 exit 1
               fi
             fi
 
             if [ "$HTTP" = "000" ]; then
-              echo "  (connection refused / timeout — Railway may still be pulling image)"
+              echo "  (connection refused / timeout — app may still be starting)"
             fi
 
             echo "  Retrying in 20s..."
@@ -194,7 +439,9 @@ jobs:
 
           echo ""
           echo "TIMEOUT: Backend did not reach UP status within 8 minutes"
-          echo "Railway deployment may still be in progress — check Railway dashboard"
+          echo "Railway deployment reached ACTIVE but Spring Boot failed to bind port."
+          echo "BACKEND_HEALTH_HTTP=000"
+          echo "BACKEND_HEALTH_STATUS=TIMEOUT"
           exit 1
 
   # ─────────────────────────────────────────────────────────────────────────────
