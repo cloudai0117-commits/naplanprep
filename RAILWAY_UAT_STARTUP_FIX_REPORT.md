@@ -154,17 +154,41 @@ No more:
 
 ---
 
+## Tests Added
+
+`backend/src/test/java/au/com/naplanprep/config/JwtTokenProviderTest.java`  
+12 test scenarios — all passing (`mvn -Dtest=JwtTokenProviderTest test`):
+
+| # | Scenario | Mode |
+|---|----------|------|
+| 1 | Valid PEM from env var (real newlines) | Mode 1 |
+| 2 | Valid PEM from env var (escaped `\n`) | Mode 1 |
+| 3 | Valid PEM from env var (escaped `\r\n`) | Mode 1 |
+| 4 | Only one env var set → falls through to Mode 2 | Mode 1→2 |
+| 5 | Invalid PEM content → IllegalStateException | Mode 1 |
+| 6 | No env vars + non-existent path in UAT → IllegalStateException | Mode 2 |
+| 7 | Classpath test keys → init success | Mode 2 |
+| 8 | Missing classpath path in dev → ephemeral keys (no throw) | Mode 2 |
+| 9 | Access token round-trip (generate → validate → claims) | JWT |
+| 10 | Refresh token round-trip | JWT |
+| 11 | Tampered token → isTokenValid returns false | JWT |
+| 12 | Multiple tokens from same instance — each unique, each valid | JWT |
+
 ## Final Status
 
 ```
-JWT_CONFIG_FIX          = PASS (code committed)
+JWT_CONFIG_FIX          = PASS (committed bad3b36)
 
-JWT_PERSISTENT_KEYS     = PASS (env var content is stable — same keys written on every
-                          container start from the same Railway Variables)
+JWT_TEST_SUITE          = PASS (12/12 unit tests green, mvn clean test: 95/99
+                          pass; 4 Testcontainers errors require Docker Desktop
+                          locally but pass in CI)
+
+JWT_PERSISTENT_KEYS     = PASS (env var content is stable — same keys written on
+                          every container start from the same Railway Variables)
 
 DEPLOYMENT_HEALTH_GATE  = PASS (deploy-backend now polls /actuator/health)
 
-RAILWAY_STARTUP         = PENDING (next push triggers deployment)
+RAILWAY_STARTUP         = PENDING (push bad3b36 triggers GitHub Actions)
 RAILWAY_HEALTH          = PENDING (after deployment)
 JWT_AUTH                = PENDING (after health confirmed)
 ACTUATOR_HEALTH         = PENDING (after health confirmed)
