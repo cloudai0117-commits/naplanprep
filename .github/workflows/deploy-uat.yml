@@ -1,4 +1,4 @@
-﻿name: Deploy â€” UAT
+name: Deploy — UAT
 
 on:
   push:
@@ -87,11 +87,11 @@ jobs:
     steps:
       - name: Set Stripe env vars on Railway
         run: |
-          # Only upsert if value is non-empty â€” preserves existing Railway values
+          # Only upsert if value is non-empty — preserves existing Railway values
           # when a GitHub secret is not yet configured for this repo.
           railway_var() {
             if [ -z "$2" ]; then
-              echo "Skipping $1 â€” secret not configured (existing Railway value preserved)"
+              echo "Skipping $1 — secret not configured (existing Railway value preserved)"
               return 0
             fi
             curl -s --max-time 30 -X POST "${{ env.RAILWAY_API }}" \
@@ -106,7 +106,7 @@ jobs:
           railway_var "STRIPE_ADVANCED_PRICE_ID"  "${{ secrets.STRIPE_TEST_ADVANCED_PRICE_ID }}"
           railway_var "STRIPE_PRO_PRICE_ID"       "${{ secrets.STRIPE_TEST_PRO_PRICE_ID }}"
           railway_var "SPRING_PROFILES_ACTIVE"    "uat"
-          echo "Env var step complete (failures are non-fatal â€” vars persist in Railway)"
+          echo "Env var step complete (failures are non-fatal — vars persist in Railway)"
 
       - name: Update Railway service image and start command
         run: |
@@ -137,14 +137,14 @@ jobs:
           echo "deployment_response=$RESPONSE" >> $GITHUB_OUTPUT
           echo "$RESPONSE"
 
-  # â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  # ─────────────────────────────────────────────────────────────────────────────
   # DB INTEGRITY GATE
-  # Polls /actuator/health/dbIntegrity â€” a dedicated Spring Boot component
+  # Polls /actuator/health/dbIntegrity — a dedicated Spring Boot component
   # endpoint (no auth required; SecurityConfig permits /actuator/health/**).
   # DbIntegrityHealthIndicator returns DOWN (HTTP 503) with details if any
   # canonical count invariant fails; UP (HTTP 200) with details if all pass.
   # Blocks frontend deploys until the 320-exam invariant is confirmed.
-  # â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  # ─────────────────────────────────────────────────────────────────────────────
   db-integrity-gate:
     name: DB Integrity Gate
     runs-on: ubuntu-latest
@@ -162,13 +162,13 @@ jobs:
             STATUS=$(curl -s -o /tmp/health.json -w "%{http_code}" "$HEALTH_URL" || echo "000")
             BODY=$(cat /tmp/health.json 2>/dev/null || echo "{}")
             OVERALL=$(echo "$BODY" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('status',''))" 2>/dev/null || echo "")
-            echo "Attempt $i â€” HTTP $STATUS â€” overall: $OVERALL"
+            echo "Attempt $i — HTTP $STATUS — overall: $OVERALL"
             if [ "$STATUS" = "200" ] && [ "$OVERALL" = "UP" ]; then
-              echo "Backend is UP â€” proceeding to integrity check"
+              echo "Backend is UP — proceeding to integrity check"
               exit 0
             fi
             if [ "$STATUS" = "503" ]; then
-              echo "Backend returned 503 (DOWN) â€” DB or app failure"
+              echo "Backend returned 503 (DOWN) — DB or app failure"
               echo "$BODY" | python3 -m json.tool 2>/dev/null || echo "$BODY"
               exit 1
             fi
@@ -211,7 +211,7 @@ for k in sorted(details.keys()):
 if component_status == "DOWN":
     fail_keys = [k for k in details if "FAIL" in str(k)]
     print()
-    print("=== DEPLOYMENT BLOCKED â€” DbIntegrityHealthIndicator returned DOWN ===")
+    print("=== DEPLOYMENT BLOCKED — DbIntegrityHealthIndicator returned DOWN ===")
     for k in fail_keys:
         print(f"  {k}: {details[k]}")
     sys.exit(1)
@@ -239,7 +239,7 @@ for key, (expected, msg) in checks.items():
     elif int(actual) != expected:
         failures.append(f"FAIL: {key}\n    Expected: {expected}\n    Actual:   {actual}\n    Check:    {msg}")
     else:
-        print(f"  PASS: {key} = {actual} âœ“")
+        print(f"  PASS: {key} = {actual} ✓")
 
 if failures:
     print()
@@ -250,12 +250,12 @@ if failures:
 
 print()
 print("=== ALL CANONICAL COUNTS VERIFIED ===")
-print("  PUBLISHED_EXAMS       = 320  âœ“")
-print("  YEAR_3/5/7/9          = 80 each  âœ“")
-print("  FREE/ADVANCED/PREMIUM = 20/100/200  âœ“")
-print("  YEAR_DOMAIN_PAIRS     = 16 each  âœ“")
-print("  EMPTY_PUBLISHED_EXAMS = 0  âœ“")
-print("  AUDIO_RESPONSE_SPELL  = 0  âœ“")
+print("  PUBLISHED_EXAMS       = 320  ✓")
+print("  YEAR_3/5/7/9          = 80 each  ✓")
+print("  FREE/ADVANCED/PREMIUM = 20/100/200  ✓")
+print("  YEAR_DOMAIN_PAIRS     = 16 each  ✓")
+print("  EMPTY_PUBLISHED_EXAMS = 0  ✓")
+print("  AUDIO_RESPONSE_SPELL  = 0  ✓")
 print()
 print("DB_INTEGRITY_GATE = PASS")
 EOF
@@ -264,6 +264,7 @@ EOF
     name: Deploy Frontend to Vercel
     runs-on: ubuntu-latest
     needs: [build-and-push, db-integrity-gate]
+    if: needs.db-integrity-gate.result == 'success'
 
     steps:
       - uses: actions/checkout@v4.2.2
@@ -292,6 +293,7 @@ EOF
     name: Deploy Admin to Vercel
     runs-on: ubuntu-latest
     needs: [build-and-push, db-integrity-gate]
+    if: needs.db-integrity-gate.result == 'success'
 
     steps:
       - uses: actions/checkout@v4.2.2
@@ -366,7 +368,7 @@ EOF
             echo "$LOGIN"
             exit 1
           fi
-          echo "Login: PASS â€” JWT obtained"
+          echo "Login: PASS — JWT obtained"
 
           # Get catalog (FREE user sees only 20 AVAILABLE)
           CATALOG=$(curl -sf -H "Authorization: Bearer $TOKEN" "$BASE_URL/exams?page=0&size=100")
@@ -406,7 +408,7 @@ EOF
           " 2>/dev/null || echo "")
 
           if [ -z "$SPELLING_EXAM" ]; then
-            echo "Could not find Year 3 Spelling Free exam in catalog â€” skipping spelling session test"
+            echo "Could not find Year 3 Spelling Free exam in catalog — skipping spelling session test"
             exit 0
           fi
           echo "Found Spelling exam: $SPELLING_EXAM"
@@ -422,7 +424,7 @@ EOF
           fi
           echo "Session started: $SESSION_ID"
 
-          # Get questions â€” first question must be SHORT_ANSWER
+          # Get questions — first question must be SHORT_ANSWER
           QUESTIONS=$(curl -sf -H "Authorization: Bearer $TOKEN" "$BASE_URL/exams/sessions/$SESSION_ID/questions")
           FIRST_TYPE=$(echo "$QUESTIONS" | python3 -c "
           import sys,json
@@ -432,7 +434,7 @@ EOF
           " 2>/dev/null || echo "?")
           echo "First question type: $FIRST_TYPE"
           if [ "$FIRST_TYPE" = "AUDIO_RESPONSE" ]; then
-            echo "FAIL: AUDIO_RESPONSE still present in Spelling exam â€” V379 migration not applied"
+            echo "FAIL: AUDIO_RESPONSE still present in Spelling exam — V379 migration not applied"
             exit 1
           fi
           echo "Spelling SHORT_ANSWER check: PASS (type=$FIRST_TYPE)"
