@@ -202,21 +202,34 @@ jobs:
           echo "Waiting 15s for Railway to register the new deployment..."
           sleep 15
 
-          # Query for the latest deployment on this service — save to file for Python parsing
+          # Query for the latest deployment on this service.
+          # NOTE: Deployment.image does NOT exist in Railway's current GraphQL schema.
+          # We query only confirmed fields: id, status, createdAt.
           curl -s --max-time 30 -X POST "${{ env.RAILWAY_API }}" \
             -H "Content-Type: application/json" \
             -H "Authorization: Bearer ${{ secrets.RAILWAY_TOKEN }}" \
-            -d "{\"query\":\"{deployments(input:{serviceId:\\\"${{ env.RAILWAY_BACKEND_SERVICE_ID }}\\\",environmentId:\\\"${{ env.RAILWAY_ENV_ID }}\\\"}){edges{node{id status createdAt image}}}}\"}" \
+            -d "{\"query\":\"{deployments(input:{serviceId:\\\"${{ env.RAILWAY_BACKEND_SERVICE_ID }}\\\",environmentId:\\\"${{ env.RAILWAY_ENV_ID }}\\\"}){edges{node{id status createdAt}}}}\"}" \
             > /tmp/deploys.json
 
           echo "Deployments query response:"
           cat /tmp/deploys.json | python3 -m json.tool 2>/dev/null || cat /tmp/deploys.json
 
-          # Extract deployment ID and image; write to GITHUB_OUTPUT
-          python3 - "$IMAGE" "$GITHUB_OUTPUT" << 'PYEOF'
+          # Check for GraphQL errors BEFORE attempting to parse deployment data.
+          # A GraphQL validation error (e.g. unknown field) returns HTTP 200 with an
+          # errors array — it must be caught here, not misreported as "no deployments".
+          DEPLOYS_GQL_ERRORS=$(python3 -c "import sys,json; d=json.load(open('/tmp/deploys.json')); errs=d.get('errors',[]); print('ERRORS: '+json.dumps(errs) if errs else 'OK')" 2>/dev/null || echo "PARSE_ERROR")
+          if [ "$DEPLOYS_GQL_ERRORS" != "OK" ]; then
+            echo "RAILWAY_GRAPHQL_ERROR: deployments query returned errors"
+            echo "$DEPLOYS_GQL_ERRORS"
+            echo "Check the Railway GraphQL schema — do not query unsupported fields."
+            exit 1
+          fi
+
+          # Extract deployment ID; write to GITHUB_OUTPUT
+          # Image verification is done at GHCR (digest from build step), not via Railway API.
+          python3 - "$GITHUB_OUTPUT" << 'PYEOF'
           import sys, json
-          expected_image = sys.argv[1]
-          output_file = sys.argv[2]
+          output_file = sys.argv[1]
           with open('/tmp/deploys.json') as f:
               try:
                   d = json.load(f)
@@ -225,31 +238,23 @@ jobs:
                   sys.exit(1)
           edges = d.get('data', {}).get('deployments', {}).get('edges', [])
           if not edges:
-              print("FAIL: No deployments found for this service after triggering")
+              print("FAIL: No deployments found for this service after triggering.")
+              print("      The trigger returned true but Railway has not registered a deployment yet.")
+              print("      This can happen if the service source was not updated before triggering.")
               sys.exit(1)
           latest = edges[0]['node']
           deploy_id = latest.get('id', '')
           deploy_status = latest.get('status', 'UNKNOWN')
-          deploy_image = latest.get('image', '') or ''
+          deploy_created = latest.get('createdAt', '')
           print(f"RAILWAY_DEPLOYMENT_ID={deploy_id}")
           print(f"RAILWAY_DEPLOYMENT_STATUS={deploy_status}")
-          print(f"RAILWAY_DEPLOYED_IMAGE={deploy_image or '<not yet populated>'}")
+          print(f"RAILWAY_DEPLOYMENT_CREATED={deploy_created}")
           with open(output_file, 'a') as f:
               f.write(f"deployment-id={deploy_id}\n")
-              f.write(f"deployed-image={deploy_image}\n")
-          if deploy_image and deploy_image == expected_image:
-              print("IMAGE_MATCH=PASS")
-          elif deploy_image:
-              print(f"IMAGE_MATCH=WARN — Railway reports '{deploy_image}', expected '{expected_image}'")
-          else:
-              print("IMAGE_MATCH=UNKNOWN — image field empty (normal for QUEUED state)")
           if not deploy_id:
               print("FAIL: deployment id is empty")
               sys.exit(1)
-          if deploy_image and deploy_image != expected_image:
-              print(f"FAIL: Railway is deploying '{deploy_image}' but we pushed '{expected_image}'")
-              print("      This means serviceInstanceUpdate did not take effect.")
-              sys.exit(1)
+          print("DEPLOYMENT_ID_CAPTURE = PASS")
           PYEOF
 
       - name: Poll Railway deployment status until ACTIVE/SUCCESS
@@ -311,25 +316,18 @@ jobs:
           DIGEST="${{ needs.build-and-push.outputs.backend-digest }}"
           IMAGE="${{ env.BACKEND_IMAGE }}:$TAG"
           DEPLOY_ID="${{ steps.trigger-deploy.outputs.deployment-id }}"
-          DEPLOYED_IMAGE="${{ steps.trigger-deploy.outputs.deployed-image }}"
 
           echo "===== DEPLOYMENT SUMMARY ====="
           echo "COMMIT_SHA=${{ github.sha }}"
-          echo "BACKEND_IMAGE_TAG=$TAG"
-          echo "BACKEND_IMAGE_DIGEST=$DIGEST"
-          echo "EXPECTED_IMAGE=$IMAGE"
+          echo "EXPECTED_BACKEND_IMAGE=$IMAGE"
+          echo "EXPECTED_IMAGE_DIGEST=$DIGEST"
           echo ""
           echo "RAILWAY_DEPLOYMENT_ID=$DEPLOY_ID"
-          echo "RAILWAY_DEPLOYED_IMAGE=${DEPLOYED_IMAGE:-<see Railway dashboard>}"
-          echo ""
-          if [ -n "$DEPLOYED_IMAGE" ] && [ "$DEPLOYED_IMAGE" = "$IMAGE" ]; then
-            echo "IMAGE_MATCH=PASS"
-          elif [ -n "$DEPLOYED_IMAGE" ]; then
-            echo "IMAGE_MATCH=WARN (Railway field: $DEPLOYED_IMAGE vs expected: $IMAGE)"
-          else
-            echo "IMAGE_MATCH=UNKNOWN (Railway did not populate image field)"
-          fi
           echo "RAILWAY_DEPLOYMENT=PASS (reached SUCCESS/ACTIVE)"
+          echo ""
+          echo "NOTE: Railway GraphQL does not expose Deployment.image."
+          echo "      GHCR artifact verified by image digest from build step."
+          echo "      Runtime image verified by backend health endpoint below."
 
       - name: Poll backend health until UP (deployment health gate)
         # Railway deployment is confirmed SUCCESS/ACTIVE — now verify the app itself.
