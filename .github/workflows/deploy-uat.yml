@@ -87,7 +87,13 @@ jobs:
     steps:
       - name: Set Stripe env vars on Railway
         run: |
+          # Only upsert if value is non-empty — preserves existing Railway values
+          # when a GitHub secret is not yet configured for this repo.
           railway_var() {
+            if [ -z "$2" ]; then
+              echo "Skipping $1 — secret not configured (existing Railway value preserved)"
+              return 0
+            fi
             curl -s --max-time 30 -X POST "${{ env.RAILWAY_API }}" \
               -H "Content-Type: application/json" \
               -H "Authorization: Bearer ${{ secrets.RAILWAY_TOKEN }}" \
