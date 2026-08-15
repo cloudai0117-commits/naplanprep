@@ -4,9 +4,9 @@ import apiClient from '@/api/client'
 
 interface DashboardData {
   totalUsers: number
-  activeSubscribers: number
+  activePaidAccess: number
   trialUsers: number
-  mrr: number
+  totalRevenue: number
   publishedQuestions: number
   draftQuestions: number
   totalExams: number
@@ -39,11 +39,11 @@ export default function AdminDashboard() {
     <div className="space-y-6">
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <MetricCard label="Total Users" value={dashboard?.totalUsers || 0} />
-        <MetricCard label="Active Subscribers" value={dashboard?.activeSubscribers || 0} color="text-green-600" />
+        <MetricCard label="Active Paid Access" value={dashboard?.activePaidAccess || 0} color="text-green-600" />
         <MetricCard
-          label="MRR"
-          value={`$${Number(dashboard?.mrr || 0).toLocaleString('en-AU', { minimumFractionDigits: 0 })}`}
-          sub="Monthly Recurring Revenue"
+          label="Total Revenue"
+          value={`A$${Number(dashboard?.totalRevenue || 0).toLocaleString('en-AU', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+          sub="One-time purchases · AUD"
           color="text-primary-600"
         />
         <MetricCard label="Total Exams" value={dashboard?.totalExams || 0} />
@@ -64,7 +64,7 @@ export default function AdminDashboard() {
 
       {subAnalytics && (
         <div className="card">
-          <h2 className="text-base font-semibold text-gray-800 mb-4">Subscription Overview</h2>
+          <h2 className="text-base font-semibold text-gray-800 mb-4">Paid Access Overview</h2>
           <div className="grid grid-cols-3 gap-4">
             <div className="text-center p-4 bg-gray-50 rounded-lg">
               <div className="text-2xl font-bold text-green-600">{subAnalytics.activeSubscriptions}</div>

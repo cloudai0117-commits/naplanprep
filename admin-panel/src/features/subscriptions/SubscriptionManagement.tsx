@@ -35,8 +35,8 @@ export default function SubscriptionManagement() {
       {analytics && (
         <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
           {[
-            { label: 'MRR', value: `$${Number(analytics.mrr).toFixed(0)}`, color: 'text-primary-600' },
-            { label: 'Active', value: analytics.activeSubscriptions, color: 'text-green-600' },
+            { label: 'Total Revenue', value: `A$${Number(analytics.totalRevenue).toLocaleString('en-AU', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`, color: 'text-primary-600' },
+            { label: 'Active Paid Access', value: analytics.activePaidAccess ?? analytics.activeSubscriptions, color: 'text-green-600' },
             { label: 'Cancelled', value: analytics.cancelledSubscriptions, color: 'text-red-500' },
             { label: 'Past Due', value: analytics.pastDueSubscriptions, color: 'text-yellow-600' },
             { label: 'Churn Rate', value: `${analytics.churnRate}%`, color: analytics.churnRate > 10 ? 'text-red-600' : 'text-green-600' },
@@ -71,23 +71,28 @@ export default function SubscriptionManagement() {
                     <th className="table-th">Customer</th>
                     <th className="table-th">Plan</th>
                     <th className="table-th">Status</th>
-                    <th className="table-th">Billing</th>
+                    <th className="table-th">Purchase Type</th>
                     <th className="table-th">Amount</th>
-                    <th className="table-th">Renews / Ends</th>
+                    <th className="table-th">Expires / Ends</th>
                     <th className="table-th">Started</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
                   {subscriptions.map((sub: any) => {
-                    const amount = sub.billingInterval === 'ANNUAL' && sub.annualPrice
-                      ? `$${Number(sub.annualPrice).toFixed(2)}/yr`
-                      : `$${Number(sub.monthlyPrice).toFixed(2)}/mo`
+                    const isOneTime = sub.purchaseType === 'ONE_TIME' || !sub.purchaseType
+                    const amount = isOneTime
+                      ? `A$${Number(sub.monthlyPrice).toFixed(2)}`
+                      : sub.billingInterval === 'ANNUAL' && sub.annualPrice
+                        ? `A$${Number(sub.annualPrice).toFixed(2)}/yr`
+                        : `A$${Number(sub.monthlyPrice).toFixed(2)}/mo`
 
                     const periodEnd = sub.cancelledAt
                       ? sub.cancelledAt
                       : sub.trialEnd && sub.status === 'TRIALING'
                         ? sub.trialEnd
-                        : sub.currentPeriodEnd
+                        : isOneTime
+                          ? (sub.expiresAt || sub.currentPeriodEnd)
+                          : sub.currentPeriodEnd
 
                     return (
                       <tr key={sub.id} className="hover:bg-gray-50">
@@ -101,8 +106,8 @@ export default function SubscriptionManagement() {
                             {sub.status}
                           </span>
                         </td>
-                        <td className="table-td text-gray-600 capitalize">
-                          {sub.billingInterval?.toLowerCase() ?? '—'}
+                        <td className="table-td text-gray-600">
+                          {isOneTime ? 'One-time' : (sub.billingInterval?.toLowerCase() ?? '—')}
                         </td>
                         <td className="table-td font-medium">{amount}</td>
                         <td className="table-td text-gray-600">

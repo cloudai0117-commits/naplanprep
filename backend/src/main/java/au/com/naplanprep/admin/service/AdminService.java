@@ -13,6 +13,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.UUID;
@@ -37,13 +38,14 @@ public class AdminService {
             au.com.naplanprep.content.entity.Question.QuestionStatus.PUBLISHED);
         long draftQuestions = questionRepository.countByStatus(
             au.com.naplanprep.content.entity.Question.QuestionStatus.DRAFT);
-        var mrr = subscriptionRepository.calculateMRR();
+        var totalRevenue = subscriptionRepository.calculateTotalRevenue();
+        long activePaidEntitlements = subscriptionRepository.countActivePaidEntitlements(Instant.now());
 
         Map<String, Object> dashboard = new LinkedHashMap<>();
         dashboard.put("totalUsers", totalUsers);
-        dashboard.put("activeSubscribers", activeSubscribers);
+        dashboard.put("activePaidAccess", activePaidEntitlements);
         dashboard.put("trialUsers", trialUsers);
-        dashboard.put("mrr", mrr != null ? mrr : 0);
+        dashboard.put("totalRevenue", totalRevenue != null ? totalRevenue : 0);
         dashboard.put("publishedQuestions", publishedQuestions);
         dashboard.put("draftQuestions", draftQuestions);
         dashboard.put("totalExams", examSessionRepository.count());
@@ -75,10 +77,12 @@ public class AdminService {
             dto.put("planName", sub.getPlan().getName());
             dto.put("planSlug", sub.getPlan().getSlug());
             dto.put("status", sub.getStatus());
+            dto.put("purchaseType", sub.getPurchaseType());
             dto.put("billingInterval", sub.getBillingInterval());
             dto.put("monthlyPrice", sub.getPlan().getMonthlyPrice());
             dto.put("annualPrice", sub.getPlan().getAnnualPrice());
             dto.put("stripeSubscriptionId", sub.getStripeSubscriptionId());
+            dto.put("expiresAt", sub.getExpiresAt());
             dto.put("currentPeriodEnd", sub.getCurrentPeriodEnd());
             dto.put("trialEnd", sub.getTrialEnd());
             dto.put("cancelledAt", sub.getCancelledAt());
@@ -97,7 +101,8 @@ public class AdminService {
     }
 
     public Map<String, Object> getSubscriptionAnalytics() {
-        var mrr = subscriptionRepository.calculateMRR();
+        var totalRevenue = subscriptionRepository.calculateTotalRevenue();
+        long activePaidAccess = subscriptionRepository.countActivePaidEntitlements(Instant.now());
         long active = subscriptionRepository.countByStatus(
             au.com.naplanprep.subscription.entity.Subscription.SubscriptionStatus.ACTIVE);
         long cancelled = subscriptionRepository.countByStatus(
@@ -109,7 +114,8 @@ public class AdminService {
             ? (cancelled * 100.0) / (active + cancelled) : 0;
 
         Map<String, Object> analytics = new LinkedHashMap<>();
-        analytics.put("mrr", mrr != null ? mrr : 0);
+        analytics.put("totalRevenue", totalRevenue != null ? totalRevenue : 0);
+        analytics.put("activePaidAccess", activePaidAccess);
         analytics.put("activeSubscriptions", active);
         analytics.put("cancelledSubscriptions", cancelled);
         analytics.put("pastDueSubscriptions", pastDue);

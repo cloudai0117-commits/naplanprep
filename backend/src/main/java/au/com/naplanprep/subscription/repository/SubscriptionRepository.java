@@ -27,7 +27,13 @@ public interface SubscriptionRepository extends JpaRepository<Subscription, UUID
     Page<Subscription> findAllByOrderByCreatedAtDesc(Pageable pageable);
     long countByStatus(Subscription.SubscriptionStatus status);
 
-    @Query("SELECT COALESCE(SUM(CASE WHEN s.billingInterval = 'MONTHLY' THEN s.plan.monthlyPrice " +
-        "ELSE s.plan.annualPrice / 12 END), 0) FROM Subscription s WHERE s.status = 'ACTIVE'")
-    BigDecimal calculateMRR();
+    /** Total revenue from all active one-time purchases (plan.monthlyPrice stores the one-time price). */
+    @Query("SELECT COALESCE(SUM(s.plan.monthlyPrice), 0) FROM Subscription s " +
+        "WHERE s.purchaseType = 'ONE_TIME' AND s.status = 'ACTIVE'")
+    BigDecimal calculateTotalRevenue();
+
+    /** Count of active one-time purchases whose access has not yet expired. */
+    @Query("SELECT COUNT(s) FROM Subscription s " +
+        "WHERE s.purchaseType = 'ONE_TIME' AND s.status = 'ACTIVE' AND s.expiresAt > :now")
+    long countActivePaidEntitlements(@Param("now") java.time.Instant now);
 }

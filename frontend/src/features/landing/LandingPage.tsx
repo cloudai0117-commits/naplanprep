@@ -12,26 +12,26 @@ const features = [
 const plans = [
   {
     name: 'Free',
-    price: '$0',
+    price: 'Free',
     period: '',
-    features: ['1 diagnostic per year level', '10 questions/day', 'Basic progress tracking'],
+    features: ['5 practice exams', 'All domains (Numeracy, Reading, Writing, Spelling, Grammar)', 'Progress tracking'],
     cta: 'Start Free',
     highlight: false,
   },
   {
-    name: 'Standard',
-    price: '$14.99',
-    period: '/month',
-    features: ['Full question bank', '12 mock exams/year', 'Progress tracking', 'All year levels'],
-    cta: 'Start Standard',
+    name: 'Advanced',
+    price: 'A$',
+    priceNote: 'One-time · Valid 1 year',
+    features: ['30 exams total (5 Free + 25 Advanced)', 'All year levels · All domains', 'Adaptive practice', 'Detailed analytics'],
+    cta: 'Get Advanced',
     highlight: false,
   },
   {
     name: 'Premium',
-    price: '$24.99',
-    period: '/month',
-    features: ['Adaptive learning', 'Unlimited mock exams', 'Parent dashboard', 'Detailed analytics', '7-day free trial'],
-    cta: 'Start Premium',
+    price: 'A$',
+    priceNote: 'One-time · Valid 1 year',
+    features: ['80 exams total (5 Free + 25 Advanced + 50 Premium)', 'All year levels · All domains', 'Adaptive practice', 'Parent dashboard', 'Detailed analytics'],
+    cta: 'Get Premium',
     highlight: true,
   },
 ]
@@ -60,7 +60,7 @@ export default function LandingPage() {
           <Link to="/register" className="btn-primary py-3 px-8 text-lg">Start for Free</Link>
           <Link to="/pricing" className="btn-secondary py-3 px-8 text-lg">View Plans</Link>
         </div>
-        <p className="mt-4 text-sm text-gray-500">No credit card required · 7-day free trial on Premium</p>
+        <p className="mt-4 text-sm text-gray-500">Start free · No credit card required</p>
       </section>
 
       {/* Features */}
@@ -86,7 +86,7 @@ export default function LandingPage() {
             Simple, transparent pricing
           </h2>
           <p className="text-center text-gray-600 mb-12">
-            Cancel anytime. Annual plans save up to 15%.
+            One-time purchase · Valid for 1 year · No subscription
           </p>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             {plans.map((plan) => (
@@ -107,6 +107,9 @@ export default function LandingPage() {
                 <div className="mb-4">
                   <span className="text-3xl font-bold text-gray-900">{plan.price}</span>
                   <span className="text-gray-500">{plan.period}</span>
+                  {'priceNote' in plan && plan.priceNote && (
+                    <div className="text-xs text-gray-500 mt-1">{plan.priceNote}</div>
+                  )}
                 </div>
                 <ul className="space-y-2 mb-6">
                   {plan.features.map((f) => (
