@@ -2,7 +2,6 @@ package au.com.naplanprep.config;
 
 import au.com.naplanprep.auth.entity.User;
 import io.jsonwebtoken.*;
-import io.jsonwebtoken.security.Keys;
 import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -32,19 +31,20 @@ public class JwtTokenProvider {
     @PostConstruct
     public void init() {
         // Mode 1: PEM content from environment variables (Railway/cloud deployment).
-        // JWT_PRIVATE_KEY and JWT_PUBLIC_KEY hold the full PEM text.
-        // This is checked first so it wins over any app.jwt.*-key-path configuration
-        // that may be set in Railway Variables (e.g. a stale APP_JWT_PRIVATE_KEY_PATH).
-        String privKeyEnv = System.getenv("JWT_PRIVATE_KEY");
-        String pubKeyEnv  = System.getenv("JWT_PUBLIC_KEY");
+        // JWT_PRIVATE_KEY and JWT_PUBLIC_KEY hold the full PEM text — with real newlines
+        // or with literal \n escape sequences (as some platforms store multiline values).
+        // Checked first so it wins over any app.jwt.*-key-path configuration that may be
+        // set in Railway Variables (e.g. a stale APP_JWT_PRIVATE_KEY_PATH).
+        String privKeyEnv = getenv("JWT_PRIVATE_KEY");
+        String pubKeyEnv  = getenv("JWT_PUBLIC_KEY");
         log.info("JWT_PRIVATE_KEY configured = {}", privKeyEnv != null && !privKeyEnv.isBlank());
         log.info("JWT_PUBLIC_KEY configured = {}",  pubKeyEnv  != null && !pubKeyEnv.isBlank());
 
         if (privKeyEnv != null && !privKeyEnv.isBlank()
                 && pubKeyEnv != null && !pubKeyEnv.isBlank()) {
             try {
-                privateKey = loadPrivateKey(privKeyEnv);
-                publicKey  = loadPublicKey(pubKeyEnv);
+                privateKey = parsePrivateKeyPem(privKeyEnv);
+                publicKey  = parsePublicKeyPem(pubKeyEnv);
                 log.info("JWT RSA keys loaded from environment variables (JWT_PRIVATE_KEY / JWT_PUBLIC_KEY)");
                 return;
             } catch (Exception e) {
@@ -76,6 +76,11 @@ public class JwtTokenProvider {
         }
     }
 
+    // Protected so tests can override without requiring PowerMock / env manipulation.
+    protected String getenv(String name) {
+        return System.getenv(name);
+    }
+
     private void generateEphemeralKeys() {
         try {
             KeyPairGenerator gen = KeyPairGenerator.getInstance("RSA");
@@ -88,34 +93,53 @@ public class JwtTokenProvider {
         }
     }
 
-    private PrivateKey loadPrivateKey(String pathOrPem) throws Exception {
-        byte[] keyBytes = readKeyContent(pathOrPem);
-        String keyStr = new String(keyBytes, StandardCharsets.UTF_8)
-            .replace("-----BEGIN PRIVATE KEY-----", "")
-            .replace("-----END PRIVATE KEY-----", "")
-            .replaceAll("\\s", "");
-        byte[] decoded = Base64.getDecoder().decode(keyStr);
+    // Mode 1 parsers — accept PEM text directly (from env var).
+    private PrivateKey parsePrivateKeyPem(String pem) throws Exception {
+        byte[] decoded = stripAndDecodeBase64(pem,
+            "-----BEGIN PRIVATE KEY-----", "-----END PRIVATE KEY-----");
         return KeyFactory.getInstance("RSA").generatePrivate(new PKCS8EncodedKeySpec(decoded));
     }
 
-    private PublicKey loadPublicKey(String pathOrPem) throws Exception {
-        byte[] keyBytes = readKeyContent(pathOrPem);
-        String keyStr = new String(keyBytes, StandardCharsets.UTF_8)
-            .replace("-----BEGIN PUBLIC KEY-----", "")
-            .replace("-----END PUBLIC KEY-----", "")
-            .replaceAll("\\s", "");
-        byte[] decoded = Base64.getDecoder().decode(keyStr);
+    private PublicKey parsePublicKeyPem(String pem) throws Exception {
+        byte[] decoded = stripAndDecodeBase64(pem,
+            "-----BEGIN PUBLIC KEY-----", "-----END PUBLIC KEY-----");
         return KeyFactory.getInstance("RSA").generatePublic(new X509EncodedKeySpec(decoded));
     }
 
-    private byte[] readKeyContent(String pathOrPem) throws Exception {
-        // Inline PEM content passed directly (from env var or init() env-var mode)
-        if (pathOrPem != null && pathOrPem.startsWith("-----BEGIN")) {
-            return pathOrPem.getBytes(StandardCharsets.UTF_8);
-        }
-        // File/classpath resource path (classpath:..., file:..., etc.)
-        var resource = resourceLoader.getResource(pathOrPem);
+    // Mode 2 loaders — read from a Spring resource path then parse.
+    private PrivateKey loadPrivateKey(String path) throws Exception {
+        byte[] keyBytes = readKeyFile(path);
+        byte[] decoded = stripAndDecodeBase64(new String(keyBytes, StandardCharsets.UTF_8),
+            "-----BEGIN PRIVATE KEY-----", "-----END PRIVATE KEY-----");
+        return KeyFactory.getInstance("RSA").generatePrivate(new PKCS8EncodedKeySpec(decoded));
+    }
+
+    private PublicKey loadPublicKey(String path) throws Exception {
+        byte[] keyBytes = readKeyFile(path);
+        byte[] decoded = stripAndDecodeBase64(new String(keyBytes, StandardCharsets.UTF_8),
+            "-----BEGIN PUBLIC KEY-----", "-----END PUBLIC KEY-----");
+        return KeyFactory.getInstance("RSA").generatePublic(new X509EncodedKeySpec(decoded));
+    }
+
+    private byte[] readKeyFile(String path) throws Exception {
+        var resource = resourceLoader.getResource(path);
         return resource.getInputStream().readAllBytes();
+    }
+
+    /**
+     * Strips PEM headers/footers and decodes the Base64 body.
+     * Handles both real newlines and literal \n escape sequences that some
+     * platforms (e.g. Railway) may use when storing multiline env var values.
+     */
+    private byte[] stripAndDecodeBase64(String pem, String header, String footer) {
+        String stripped = pem
+            .replace("\\r\\n", "\n")   // Windows escaped CRLF
+            .replace("\\n", "\n")       // escaped newline from some env var storage formats
+            .replace("\\r", "")         // stray escaped CR
+            .replace(header, "")
+            .replace(footer, "")
+            .replaceAll("\\s", "");     // remove all actual whitespace (newlines, spaces)
+        return Base64.getDecoder().decode(stripped);
     }
 
     public String generateAccessToken(User user) {
