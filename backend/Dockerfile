@@ -13,12 +13,10 @@ RUN addgroup -S naplanprep && adduser -S naplanprep -G naplanprep
 WORKDIR /app
 
 COPY --from=builder /app/target/*.jar app.jar
+COPY entrypoint.sh entrypoint.sh
+RUN chmod +x entrypoint.sh
 
 USER naplanprep
 EXPOSE 8080
 
-ENTRYPOINT ["java", \
-  "-XX:+UseContainerSupport", \
-  "-XX:MaxRAMPercentage=75.0", \
-  "-Djava.security.egd=file:/dev/./urandom", \
-  "-jar", "app.jar"]
+ENTRYPOINT ["/bin/sh", "/app/entrypoint.sh"]
