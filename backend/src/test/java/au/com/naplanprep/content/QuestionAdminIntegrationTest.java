@@ -83,7 +83,8 @@ class QuestionAdminIntegrationTest {
     void createdQuestion_appearsInSearchByYearLevel() {
         Question q = contentService.createQuestion(req(5, Question.Domain.NUMERACY, "Fractions"), creatorId);
 
-        Page<Question> results = contentService.searchQuestions(5, null, null, null, null, null, Pageable.ofSize(50));
+        // Flyway seeds thousands of questions; Pageable.unpaged() avoids missing the test question on page N+1
+        Page<Question> results = contentService.searchQuestions(5, null, null, null, null, null, Pageable.unpaged());
         assertTrue(results.getContent().stream().anyMatch(r -> r.getId().equals(q.getId())));
     }
 
@@ -91,10 +92,10 @@ class QuestionAdminIntegrationTest {
     void createdQuestion_appearsInSearchByDomain_andExcludedFromOtherDomains() {
         Question q = contentService.createQuestion(req(7, Question.Domain.READING, "Comprehension"), creatorId);
 
-        Page<Question> reading = contentService.searchQuestions(null, Question.Domain.READING, null, null, null, null, Pageable.ofSize(50));
+        Page<Question> reading = contentService.searchQuestions(null, Question.Domain.READING, null, null, null, null, Pageable.unpaged());
         assertTrue(reading.getContent().stream().anyMatch(r -> r.getId().equals(q.getId())));
 
-        Page<Question> spelling = contentService.searchQuestions(null, Question.Domain.SPELLING, null, null, null, null, Pageable.ofSize(50));
+        Page<Question> spelling = contentService.searchQuestions(null, Question.Domain.SPELLING, null, null, null, null, Pageable.unpaged());
         assertFalse(spelling.getContent().stream().anyMatch(r -> r.getId().equals(q.getId())));
     }
 
@@ -147,8 +148,10 @@ class QuestionAdminIntegrationTest {
         questionRepository.flush();
         contentService.updateStatus(q.getId(), Question.QuestionStatus.PUBLISHED);
 
+        // Flyway seeds thousands of published questions; Pageable.unpaged() ensures the
+        // test question is found regardless of how many published questions exist.
         Page<Question> published = contentService.searchQuestions(
-            null, null, null, null, Question.QuestionStatus.PUBLISHED, null, Pageable.ofSize(200));
+            null, null, null, null, Question.QuestionStatus.PUBLISHED, null, Pageable.unpaged());
         assertTrue(published.getContent().stream().anyMatch(r -> r.getId().equals(q.getId())));
     }
 

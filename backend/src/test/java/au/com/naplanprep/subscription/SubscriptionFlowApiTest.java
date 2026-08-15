@@ -20,9 +20,7 @@ import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
-import javax.crypto.Mac;
-import javax.crypto.spec.SecretKeySpec;
-import java.nio.charset.StandardCharsets;
+import au.com.naplanprep.common.StripeTestUtils;
 import java.time.Instant;
 import java.util.UUID;
 
@@ -147,21 +145,9 @@ class SubscriptionFlowApiTest {
 
         mockMvc.perform(post("/v1/subscriptions/webhooks/stripe")
                 .contentType(MediaType.APPLICATION_JSON)
-                .header("stripe-signature", stripeSignatureHeader(payload, TEST_WEBHOOK_SECRET, now))
+                .header("stripe-signature", StripeTestUtils.stripeSignatureHeader(payload, TEST_WEBHOOK_SECRET, now))
                 .content(payload))
                 .andExpect(status().isOk());
-    }
-
-    // Computes a Stripe-compatible webhook signature header.
-    // Stripe signs: HMAC-SHA256(secret, t + "." + rawPayload)
-    static String stripeSignatureHeader(String payload, String secret, long timestamp) throws Exception {
-        String signed = timestamp + "." + payload;
-        Mac mac = Mac.getInstance("HmacSHA256");
-        mac.init(new SecretKeySpec(secret.getBytes(StandardCharsets.UTF_8), "HmacSHA256"));
-        byte[] hash = mac.doFinal(signed.getBytes(StandardCharsets.UTF_8));
-        StringBuilder hex = new StringBuilder();
-        for (byte b : hash) hex.append(String.format("%02x", b));
-        return "t=" + timestamp + ",v1=" + hex;
     }
 
     private JsonNode currentSub(String token) throws Exception {
@@ -236,9 +222,9 @@ class SubscriptionFlowApiTest {
                 .andExpect(status().isUnauthorized());
     }
 
-    // ── 5. Authenticated checkout with missing Stripe key → clear error ───────
-    // application-test.yml has secret-key: sk_test_placeholder, which triggers
-    // the BusinessException guard in SubscriptionService.createCheckoutSession.
+    // ── 5. Authenticated checkout with unconfigured price ID → clear 400 error ─
+    // application-test.yml sets advanced-price-id to empty (no default).
+    // resolvePriceId("advanced") returns blank → BusinessException("price ID not configured")
 
     @Test
     void checkout_returns_stripe_not_configured_error() throws Exception {
@@ -247,14 +233,14 @@ class SubscriptionFlowApiTest {
                 .header("Authorization", "Bearer " + session.token())
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("""
-                        {"planSlug":"standard","interval":"monthly"}"""))
+                        {"planSlug":"advanced","interval":"monthly"}"""))
                 .andExpect(status().isBadRequest())
                 .andReturn().getResponse().getContentAsString();
 
         JsonNode root = objectMapper.readTree(resp);
         String err = root.path("errors").get(0).asText();
         assertTrue(err.toLowerCase().contains("not configured"),
-                "Error should explain Stripe is not configured, got: " + err);
+                "Error should explain the price ID is not configured, got: " + err);
     }
 
     // ── 6. Free → Advanced via webhook ───────────────────────────────────────
@@ -396,7 +382,7 @@ class SubscriptionFlowApiTest {
 
         mockMvc.perform(post("/v1/subscriptions/webhooks/stripe")
                 .contentType(MediaType.APPLICATION_JSON)
-                .header("stripe-signature", stripeSignatureHeader(cancelPayload, TEST_WEBHOOK_SECRET, now))
+                .header("stripe-signature", StripeTestUtils.stripeSignatureHeader(cancelPayload, TEST_WEBHOOK_SECRET, now))
                 .content(cancelPayload))
                 .andExpect(status().isOk());
 
@@ -429,7 +415,7 @@ class SubscriptionFlowApiTest {
         String payload = """
                 {"id":"evt_sig_check","object":"event","type":"test.webhook.signature"}
                 """;
-        String sig = stripeSignatureHeader(payload, TEST_WEBHOOK_SECRET, now);
+        String sig = StripeTestUtils.stripeSignatureHeader(payload, TEST_WEBHOOK_SECRET, now);
         mockMvc.perform(post("/v1/subscriptions/webhooks/stripe")
                 .contentType(MediaType.APPLICATION_JSON)
                 .header("stripe-signature", sig)

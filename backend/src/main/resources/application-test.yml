@@ -35,8 +35,11 @@ app:
     secret-key: ${STRIPE_SECRET_KEY:sk_test_naplanprep_ci_placeholder}
     publishable-key: ${STRIPE_PUBLISHABLE_KEY:pk_test_naplanprep_ci_placeholder}
     webhook-secret: ${STRIPE_WEBHOOK_SECRET:whsec_naplanprep_ci_test_signing_key_2024}
-    advanced-price-id: ${STRIPE_ADVANCED_PRICE_ID:price_ci_advanced_test}
-    pro-price-id: ${STRIPE_PRO_PRICE_ID:price_ci_pro_test}
+    # Empty defaults: resolvePriceId() returns blank → BusinessException("price ID not configured")
+    # This lets checkout_returns_stripe_not_configured_error get 400 without a real Stripe key.
+    # In UAT, the real STRIPE_ADVANCED_PRICE_ID / STRIPE_PRO_PRICE_ID env vars are set.
+    advanced-price-id: ${STRIPE_ADVANCED_PRICE_ID:}
+    pro-price-id: ${STRIPE_PRO_PRICE_ID:}
   cors:
     allowed-origins:
       - http://localhost:3000

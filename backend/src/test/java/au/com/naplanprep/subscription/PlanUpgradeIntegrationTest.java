@@ -3,6 +3,8 @@ package au.com.naplanprep.subscription;
 import au.com.naplanprep.admin.service.AdminService;
 import au.com.naplanprep.auth.entity.User;
 import au.com.naplanprep.auth.repository.UserRepository;
+import au.com.naplanprep.common.StripeTestUtils;
+import au.com.naplanprep.common.exception.BusinessException;
 import au.com.naplanprep.content.entity.Question;
 import au.com.naplanprep.content.repository.QuestionRepository;
 import au.com.naplanprep.exam.dto.AvailableExamResponse;
@@ -20,6 +22,7 @@ import au.com.naplanprep.subscription.service.SubscriptionService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
 import org.springframework.data.domain.Page;
@@ -40,6 +43,7 @@ import java.util.Set;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 @SpringBootTest
 @Testcontainers
@@ -50,6 +54,9 @@ class PlanUpgradeIntegrationTest {
     @Container
     @ServiceConnection
     static PostgreSQLContainer<?> postgres = new PostgreSQLContainer<>("postgres:16-alpine");
+
+    @Value("${app.stripe.webhook-secret}")
+    private String webhookSecret;
 
     @Autowired private SubscriptionService subscriptionService;
     @Autowired private ExamService examService;
@@ -241,12 +248,12 @@ class PlanUpgradeIntegrationTest {
             "Admin list shows full subscription history — both Advanced and Premium rows");
     }
 
-    // ── Webhook handler (signature verification bypassed in test profile) ─────
+    // ── Webhook handler (real HMAC-SHA256 signature, test profile secret) ─────
 
     @Test
-    void webhookHandler_createsNewPremiumSubscription() {
-        long periodStart = Instant.now().getEpochSecond();
-        long periodEnd = Instant.now().plusSeconds(30L * 24 * 3600).getEpochSecond();
+    void webhookHandler_createsNewPremiumSubscription() throws Exception {
+        long now = Instant.now().getEpochSecond();
+        long periodEnd = now + 30L * 24 * 3600;
         String stripeSubId = "sub_webhook_prem_" + UUID.randomUUID();
 
         String payload = """
@@ -274,9 +281,10 @@ class PlanUpgradeIntegrationTest {
                 }
               }
             }
-            """.formatted(stripeSubId, studentId, periodStart, periodEnd);
+            """.formatted(stripeSubId, studentId, now, periodEnd);
 
-        subscriptionService.handleWebhook(payload, "dummy-sig");
+        subscriptionService.handleWebhook(payload,
+            StripeTestUtils.stripeSignatureHeader(payload, webhookSecret, now));
 
         Optional<Subscription> created = subscriptionRepository.findByStripeSubscriptionId(stripeSubId);
         assertTrue(created.isPresent(), "Subscription record should be created by webhook handler");
@@ -285,12 +293,14 @@ class PlanUpgradeIntegrationTest {
     }
 
     @Test
-    void webhookHandler_updatesExistingSubscriptionPlanOnUpgrade() {
+    void webhookHandler_updatesExistingSubscriptionPlanOnUpgrade() throws Exception {
         subscriptionRepository.save(activeSub(standardPlan, "sub_existing_to_upgrade"));
 
-        long periodStart = Instant.now().getEpochSecond();
-        long periodEnd = Instant.now().plusSeconds(30L * 24 * 3600).getEpochSecond();
+        long now = Instant.now().getEpochSecond();
+        long periodEnd = now + 30L * 24 * 3600;
 
+        // metadata planSlug must be "premium" — processStripeSubscription falls back to slug
+        // when the test price ID is not seeded in Plan.stripeMonthlyPriceId
         String payload = """
             {
               "id": "evt_test_002",
@@ -302,7 +312,7 @@ class PlanUpgradeIntegrationTest {
                   "id": "sub_existing_to_upgrade",
                   "object": "subscription",
                   "status": "active",
-                  "metadata": { "userId": "%s", "planSlug": "advanced" },
+                  "metadata": { "userId": "%s", "planSlug": "premium" },
                   "items": {
                     "object": "list",
                     "data": [{
@@ -316,13 +326,26 @@ class PlanUpgradeIntegrationTest {
                 }
               }
             }
-            """.formatted(studentId, periodStart, periodEnd);
+            """.formatted(studentId, now, periodEnd);
 
-        subscriptionService.handleWebhook(payload, "dummy-sig");
+        subscriptionService.handleWebhook(payload,
+            StripeTestUtils.stripeSignatureHeader(payload, webhookSecret, now));
 
         Subscription updated = subscriptionRepository.findByStripeSubscriptionId("sub_existing_to_upgrade")
             .orElseThrow();
         assertEquals("premium", updated.getPlan().getSlug(),
-            "Webhook should update the existing subscription's plan to Premium based on the new price ID");
+            "Webhook with planSlug=premium in metadata should update the subscription's plan to Premium");
+    }
+
+    // ── Invalid signature → BusinessException ────────────────────────────────
+
+    @Test
+    void webhookHandler_withInvalidSignature_throwsBusinessException() {
+        long now = Instant.now().getEpochSecond();
+        String payload = """
+            {"id":"evt_bad","object":"event","type":"customer.subscription.created"}
+            """;
+        assertThrows(BusinessException.class, () ->
+            subscriptionService.handleWebhook(payload, "t=" + now + ",v1=invalidsignaturehex"));
     }
 }
