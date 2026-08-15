@@ -290,7 +290,18 @@ jobs:
                 echo "FAIL: Railway deployment $DEPLOY_ID reached terminal failure: $DEP_STATUS"
                 echo "RAILWAY_DEPLOYMENT_ID=$DEPLOY_ID"
                 echo "RAILWAY_DEPLOYMENT_STATUS=$DEP_STATUS"
-                echo "Check Railway dashboard logs for this deployment."
+                echo ""
+                echo "===== FETCHING RAILWAY DEPLOYMENT LOGS ====="
+                LOG_RESP=$(curl -s --max-time 30 -X POST "${{ env.RAILWAY_API }}" \
+                  -H "Content-Type: application/json" \
+                  -H "Authorization: Bearer ${{ secrets.RAILWAY_TOKEN }}" \
+                  -d "{\"query\":\"{deploymentLogs(deploymentId:\\\"$DEPLOY_ID\\\",filter:null,limit:500){message timestamp severity}}\"}" 2>/dev/null || echo '{"error":"curl failed"}')
+                echo "--- RAW LOG RESPONSE (first 8000 chars) ---"
+                echo "$LOG_RESP" | head -c 8000
+                echo ""
+                echo "--- PARSED MESSAGES ---"
+                echo "$LOG_RESP" | python3 -c "import sys,json; d=json.load(sys.stdin); errs=d.get('errors',[]); [print('GRAPHQL ERROR:',e.get('message','')) for e in errs]; logs=(d.get('data') or {}).get('deploymentLogs',[]) or []; print('(no log entries returned)') if not logs else [print('['+e.get('severity','')+'] '+e.get('timestamp','')+' '+e.get('message','')) for e in logs]" 2>/dev/null || echo "(python3 parse failed — see RAW LOG RESPONSE above)"
+                echo "===== END RAILWAY DEPLOYMENT LOGS ====="
                 exit 1
                 ;;
               UNKNOWN)
