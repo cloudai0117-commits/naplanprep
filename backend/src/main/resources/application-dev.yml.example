@@ -1,0 +1,55 @@
+# ─── LOCAL DEVELOPMENT TEMPLATE ──────────────────────────────────────────────
+# Copy this file to application-dev.yml and fill in your own values.
+# application-dev.yml is gitignored — never commit real secrets.
+#
+# Alternatively, set these env vars in your IDE run configuration or a
+# local .env file (copy backend/.env.example to backend/.env).
+# ─────────────────────────────────────────────────────────────────────────────
+
+spring:
+  datasource:
+    url: jdbc:postgresql://localhost:5432/naplanprep_dev
+    username: postgres
+    password: postgres
+    driver-class-name: org.postgresql.Driver
+    hikari:
+      maximum-pool-size: 10
+  data:
+    redis:
+      host: localhost
+      port: 6379
+      timeout: 2000ms
+  jpa:
+    show-sql: true
+
+logging:
+  level:
+    root: INFO
+    au.com.naplanprep: DEBUG
+    org.springframework.security: DEBUG
+    org.hibernate.SQL: DEBUG
+
+app:
+  jwt:
+    private-key-path: classpath:keys/dev-private.pem
+    public-key-path: classpath:keys/dev-public.pem
+    access-token-expiry: 900
+    refresh-token-expiry: 604800
+  stripe:
+    # Get these from https://dashboard.stripe.com/test/apikeys (TEST mode only)
+    secret-key: ${STRIPE_SECRET_KEY:sk_test_YOUR_KEY_HERE}
+    publishable-key: ${STRIPE_PUBLISHABLE_KEY:pk_test_YOUR_KEY_HERE}
+    # Run: stripe listen --forward-to localhost:8080/v1/subscriptions/webhooks/stripe
+    # Then copy the whsec_... value printed by the CLI.
+    webhook-secret: ${STRIPE_WEBHOOK_SECRET:whsec_YOUR_CLI_SECRET_HERE}
+    # Create one-time Price objects at https://dashboard.stripe.com/test/products
+    advanced-price-id: ${STRIPE_ADVANCED_PRICE_ID:price_YOUR_ADVANCED_PRICE_ID}
+    pro-price-id: ${STRIPE_PRO_PRICE_ID:price_YOUR_PRO_PRICE_ID}
+  cors:
+    allowed-origins:
+      - http://localhost:5173
+      - http://localhost:5174
+  frontend-url: http://localhost:5173
+  rate-limit:
+    auth-attempts: 5
+    auth-lockout-minutes: 15

@@ -57,6 +57,7 @@ public class ContentService {
             .createdBy(createdBy);
         if (req.packageType() != null) builder.packageType(req.packageType());
         if (req.difficulty() != null) builder.difficulty(req.difficulty());
+        if (req.calculatorAllowed() != null) builder.calculatorAllowed(req.calculatorAllowed());
         return questionRepository.save(builder.build());
     }
 
@@ -77,6 +78,7 @@ public class ContentService {
         question.setExplanation(req.explanation());
         if (req.packageType() != null) question.setPackageType(req.packageType());
         if (req.difficulty() != null) question.setDifficulty(req.difficulty());
+        if (req.calculatorAllowed() != null) question.setCalculatorAllowed(req.calculatorAllowed());
 
         return questionRepository.save(question);
     }

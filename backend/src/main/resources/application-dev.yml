@@ -28,9 +28,30 @@ app:
     access-token-expiry: 900
     refresh-token-expiry: 604800
   stripe:
-    secret-key: sk_test_placeholder_replace_with_real_test_key
-    webhook-secret: whsec_placeholder_replace_with_real_webhook_secret
-    publishable-key: pk_test_placeholder_replace_with_real_test_key
+    # ─── LOCAL DEVELOPMENT ────────────────────────────────────────────────────
+    # Set these environment variables in your IDE run config or a local .env file
+    # (the .env file is gitignored — copy backend/.env.example to backend/.env).
+    #
+    # Required Stripe environment variables:
+    #   STRIPE_SECRET_KEY         sk_test_... from dashboard.stripe.com/test/apikeys
+    #   STRIPE_PUBLISHABLE_KEY    pk_test_... from the same page
+    #   STRIPE_WEBHOOK_SECRET     whsec_... from `stripe listen` CLI output
+    #   STRIPE_ADVANCED_PRICE_ID  price_... one-time Price for the "advanced" plan
+    #   STRIPE_PRO_PRICE_ID       price_... one-time Price for the "pro" plan
+    #
+    # Create one-time Price objects at: https://dashboard.stripe.com/test/products
+    # Forward webhooks locally with the Stripe CLI:
+    #   stripe listen --forward-to localhost:8080/v1/subscriptions/webhooks/stripe
+    #     --events checkout.session.completed,checkout.session.async_payment_succeeded,checkout.session.async_payment_failed
+    #
+    # If these are not set, the application starts but payment features are unavailable.
+    # Test cards (TEST MODE only): 4242424242424242 | 4000002560000002 (3DS) | 4000000000009995 (decline)
+    # ─────────────────────────────────────────────────────────────────────────
+    secret-key: ${STRIPE_SECRET_KEY:}
+    publishable-key: ${STRIPE_PUBLISHABLE_KEY:}
+    webhook-secret: ${STRIPE_WEBHOOK_SECRET:}
+    advanced-price-id: ${STRIPE_ADVANCED_PRICE_ID:}
+    pro-price-id: ${STRIPE_PRO_PRICE_ID:}
   cors:
     allowed-origins:
       - http://localhost:5173

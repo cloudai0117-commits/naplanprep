@@ -79,9 +79,10 @@ class SubscriptionFlowApiTest {
         when(redisTemplate.hasKey(anyString())).thenReturn(Boolean.FALSE);
         when(redisTemplate.opsForValue()).thenReturn(ops);
 
-        planRepository.findBySlug("standard")
+        // V33 renamed slugs: free→basic, standard→advanced, premium→pro
+        planRepository.findBySlug("advanced")
             .ifPresent(p -> standardPriceId = p.getStripeMonthlyPriceId());
-        planRepository.findBySlug("premium")
+        planRepository.findBySlug("pro")
             .ifPresent(p -> premiumPriceId = p.getStripeMonthlyPriceId());
     }
 
@@ -110,7 +111,8 @@ class SubscriptionFlowApiTest {
 
     private void webhook(UUID userId, String stripeSubId, String priceId,
                          String eventType, String stripeStatus) throws Exception {
-        String planSlug = premiumPriceId != null && premiumPriceId.equals(priceId) ? "premium" : "standard";
+        // V33 renamed slugs: standard→advanced, premium→pro
+        String planSlug = premiumPriceId != null && premiumPriceId.equals(priceId) ? "pro" : "advanced";
         long now = Instant.now().getEpochSecond();
         String payload = """
                 {
@@ -237,59 +239,59 @@ class SubscriptionFlowApiTest {
                 "Error should explain Stripe is not configured, got: " + err);
     }
 
-    // ── 6. Free → Standard via webhook ───────────────────────────────────────
+    // ── 6. Free → Advanced via webhook ───────────────────────────────────────
 
     @Test
-    void free_to_standard_upgrade_via_webhook() throws Exception {
-        assumeTrue(standardPriceId != null, "Standard plan price ID not seeded — skipping");
-        UserSession session = register("free-to-std");
-        String subId = "sub_std_" + UUID.randomUUID();
+    void free_to_advanced_upgrade_via_webhook() throws Exception {
+        assumeTrue(standardPriceId != null, "Advanced plan price ID not seeded — skipping");
+        UserSession session = register("free-to-advanced");
+        String subId = "sub_adv_" + UUID.randomUUID();
 
         webhook(session.userId(), subId, standardPriceId, "customer.subscription.created", "active");
 
         String slug = currentSub(session.token()).path("plan").path("slug").asText();
-        assertEquals("standard", slug);
+        assertEquals("advanced", slug);
     }
 
-    // ── 7. Standard → Premium upgrade via webhook ─────────────────────────────
+    // ── 7. Advanced → Pro upgrade via webhook ─────────────────────────────────
 
     @Test
-    void standard_to_premium_upgrade_via_webhook() throws Exception {
-        assumeTrue(standardPriceId != null, "Standard plan price ID not seeded — skipping");
-        assumeTrue(premiumPriceId != null, "Premium plan price ID not seeded — skipping");
-        UserSession session = register("std-to-prem");
+    void advanced_to_pro_upgrade_via_webhook() throws Exception {
+        assumeTrue(standardPriceId != null, "Advanced plan price ID not seeded — skipping");
+        assumeTrue(premiumPriceId != null, "Pro plan price ID not seeded — skipping");
+        UserSession session = register("adv-to-pro");
 
-        webhook(session.userId(), "sub_std_" + UUID.randomUUID(), standardPriceId,
+        webhook(session.userId(), "sub_adv_" + UUID.randomUUID(), standardPriceId,
                 "customer.subscription.created", "active");
-        webhook(session.userId(), "sub_prem_" + UUID.randomUUID(), premiumPriceId,
-                "customer.subscription.created", "active");
-
-        String slug = currentSub(session.token()).path("plan").path("slug").asText();
-        assertEquals("premium", slug, "After premium webhook, current plan must be premium");
-    }
-
-    // ── 8. Free → Premium direct (skip Standard) via webhook ─────────────────
-
-    @Test
-    void free_to_premium_direct_upgrade_via_webhook() throws Exception {
-        assumeTrue(premiumPriceId != null, "Premium plan price ID not seeded — skipping");
-        UserSession session = register("free-to-prem");
-
-        webhook(session.userId(), "sub_prem_direct_" + UUID.randomUUID(), premiumPriceId,
+        webhook(session.userId(), "sub_pro_" + UUID.randomUUID(), premiumPriceId,
                 "customer.subscription.created", "active");
 
         String slug = currentSub(session.token()).path("plan").path("slug").asText();
-        assertEquals("premium", slug, "Direct free→premium must set plan to premium");
+        assertEquals("pro", slug, "After pro webhook, current plan must be pro");
     }
 
-    // ── 9. After Standard: standard exams AVAILABLE, premium UPGRADE_REQUIRED ─
+    // ── 8. Free → Pro direct (skip Advanced) via webhook ─────────────────────
 
     @Test
-    void after_standard_upgrade_exam_entitlements_are_correct() throws Exception {
-        assumeTrue(standardPriceId != null, "Standard plan price ID not seeded — skipping");
-        UserSession session = register("std-exam-access");
+    void free_to_pro_direct_upgrade_via_webhook() throws Exception {
+        assumeTrue(premiumPriceId != null, "Pro plan price ID not seeded — skipping");
+        UserSession session = register("free-to-pro");
 
-        webhook(session.userId(), "sub_std_exam_" + UUID.randomUUID(), standardPriceId,
+        webhook(session.userId(), "sub_pro_direct_" + UUID.randomUUID(), premiumPriceId,
+                "customer.subscription.created", "active");
+
+        String slug = currentSub(session.token()).path("plan").path("slug").asText();
+        assertEquals("pro", slug, "Direct free→pro must set plan to pro");
+    }
+
+    // ── 9. After Advanced: advanced exams AVAILABLE, pro/premium UPGRADE_REQUIRED ─
+
+    @Test
+    void after_advanced_upgrade_exam_entitlements_are_correct() throws Exception {
+        assumeTrue(standardPriceId != null, "Advanced plan price ID not seeded — skipping");
+        UserSession session = register("adv-exam-access");
+
+        webhook(session.userId(), "sub_adv_exam_" + UUID.randomUUID(), standardPriceId,
                 "customer.subscription.created", "active");
 
         String resp = mockMvc.perform(get("/v1/exams/available")
@@ -299,23 +301,24 @@ class SubscriptionFlowApiTest {
 
         JsonNode exams = objectMapper.readTree(resp).path("data");
         for (JsonNode exam : exams) {
-            String tier = exam.path("requiredTier").asText();
+            // Field is packageType in AvailableExamResponse, not requiredTier
+            String tier = exam.path("packageType").asText();
             String avail = exam.path("availability").asText();
             if ("PREMIUM".equals(tier)) {
                 assertEquals("UPGRADE_REQUIRED", avail,
-                        "Standard subscriber must not access premium exam: " + exam.path("title").asText());
+                        "Advanced subscriber must not access premium exam: " + exam.path("title").asText());
             }
         }
     }
 
-    // ── 10. After Premium: premium exams become AVAILABLE ─────────────────────
+    // ── 10. After Pro: premium exams become AVAILABLE ─────────────────────────
 
     @Test
-    void after_premium_upgrade_premium_exams_are_available() throws Exception {
-        assumeTrue(premiumPriceId != null, "Premium plan price ID not seeded — skipping");
-        UserSession session = register("prem-exam-access");
+    void after_pro_upgrade_premium_exams_are_available() throws Exception {
+        assumeTrue(premiumPriceId != null, "Pro plan price ID not seeded — skipping");
+        UserSession session = register("pro-exam-access");
 
-        webhook(session.userId(), "sub_prem_exam_" + UUID.randomUUID(), premiumPriceId,
+        webhook(session.userId(), "sub_pro_exam_" + UUID.randomUUID(), premiumPriceId,
                 "customer.subscription.created", "active");
 
         String resp = mockMvc.perform(get("/v1/exams/available")
@@ -326,21 +329,22 @@ class SubscriptionFlowApiTest {
         JsonNode exams = objectMapper.readTree(resp).path("data");
         boolean hasPremiumAvailable = false;
         for (JsonNode exam : exams) {
-            if ("PREMIUM".equals(exam.path("requiredTier").asText())
+            // Field is packageType in AvailableExamResponse, not requiredTier
+            if ("PREMIUM".equals(exam.path("packageType").asText())
                     && "AVAILABLE".equals(exam.path("availability").asText())) {
                 hasPremiumAvailable = true;
                 break;
             }
         }
         assertTrue(hasPremiumAvailable,
-                "Premium subscriber should see at least one PREMIUM exam as AVAILABLE");
+                "Pro subscriber should see at least one PREMIUM exam as AVAILABLE");
     }
 
     // ── 11. Subscription cancelled → no active subscription ──────────────────
 
     @Test
     void cancellation_webhook_removes_active_subscription() throws Exception {
-        assumeTrue(premiumPriceId != null, "Premium plan price ID not seeded — skipping");
+        assumeTrue(premiumPriceId != null, "Pro plan price ID not seeded — skipping");
         UserSession session = register("cancel-flow");
         String stripeSubId = "sub_cancel_" + UUID.randomUUID();
 
@@ -363,7 +367,7 @@ class SubscriptionFlowApiTest {
                       "id": "%s",
                       "object": "subscription",
                       "status": "canceled",
-                      "metadata": {"userId": "%s", "planSlug": "premium"},
+                      "metadata": {"userId": "%s", "planSlug": "pro"},
                       "items": {"object": "list", "data": []},
                       "current_period_start": %d,
                       "current_period_end": %d

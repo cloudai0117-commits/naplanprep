@@ -46,11 +46,12 @@ class ExamEntitlementTest {
     }
 
     @Test
-    void tags_are_additive_not_hierarchical() {
-        // Having PREMIUM does not automatically grant ADVANCED access unless explicitly set
-        Set<PackageType> premiumOnlyTags = Set.of(PackageType.FREE, PackageType.PREMIUM);
-        assertTrue(premiumOnlyTags.contains(PackageType.FREE));
-        assertFalse(premiumOnlyTags.contains(PackageType.ADVANCED));
-        assertTrue(premiumOnlyTags.contains(PackageType.PREMIUM));
+    void premium_tag_set_must_include_advanced_and_free_for_cumulative_access() {
+        // resolvePlanToPackageTiers("pro") returns {FREE, ADVANCED, PREMIUM}.
+        // A user who purchased Pro must be able to access FREE, ADVANCED, and PREMIUM exams.
+        Set<PackageType> premiumTags = Set.of(PackageType.FREE, PackageType.ADVANCED, PackageType.PREMIUM);
+        assertTrue(premiumTags.contains(PackageType.FREE),     "Pro must include FREE access");
+        assertTrue(premiumTags.contains(PackageType.ADVANCED), "Pro must include ADVANCED access");
+        assertTrue(premiumTags.contains(PackageType.PREMIUM),  "Pro must include PREMIUM access");
     }
 }

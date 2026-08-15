@@ -40,10 +40,15 @@ app:
     access-token-expiry: 900
     refresh-token-expiry: 604800
   stripe:
-    secret-key: ${STRIPE_SECRET_KEY:sk_test_placeholder}
-    # Hardcoded placeholder so Railway STRIPE_WEBHOOK_SECRET cannot override bypass in UAT
-    webhook-secret: whsec_placeholder
-    publishable-key: ${STRIPE_PUBLISHABLE_KEY:pk_test_placeholder}
+    # All Stripe values are REQUIRED in UAT — no defaults.
+    # The application will fail to start if any of these are missing.
+    # Set these in the Railway dashboard (Variables tab) or Azure Application Settings.
+    # NEVER put real values in this file.
+    secret-key: ${STRIPE_SECRET_KEY}
+    publishable-key: ${STRIPE_PUBLISHABLE_KEY}
+    webhook-secret: ${STRIPE_WEBHOOK_SECRET}
+    advanced-price-id: ${STRIPE_ADVANCED_PRICE_ID}
+    pro-price-id: ${STRIPE_PRO_PRICE_ID}
   cors:
     allowed-origins:
       - https://naplanprep.com.au

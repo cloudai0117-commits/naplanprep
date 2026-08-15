@@ -1,0 +1,53 @@
+# ─── TEST PROFILE TEMPLATE ────────────────────────────────────────────────────
+# The actual application-test.yml uses dummy non-functional defaults so the
+# Spring context loads without real Stripe credentials.
+#
+# To run integration tests that actually call Stripe APIs, set these env vars
+# in your CI environment or local shell:
+#   export STRIPE_SECRET_KEY=sk_test_...
+#   export STRIPE_WEBHOOK_SECRET=whsec_...
+#   export STRIPE_ADVANCED_PRICE_ID=price_...
+#   export STRIPE_PRO_PRICE_ID=price_...
+#
+# Unit tests (PaymentPipelineUnitTest) mock the Stripe client — no real keys needed.
+# ─────────────────────────────────────────────────────────────────────────────
+
+spring:
+  datasource:
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/naplanprep_test}
+    username: ${SPRING_DATASOURCE_USERNAME:testuser}
+    password: ${SPRING_DATASOURCE_PASSWORD:testpass}
+    driver-class-name: org.postgresql.Driver
+    hikari:
+      maximum-pool-size: 5
+  data:
+    redis:
+      host: ${SPRING_DATA_REDIS_HOST:localhost}
+      port: ${SPRING_DATA_REDIS_PORT:6379}
+      repositories:
+        enabled: false
+  jpa:
+    show-sql: false
+
+app:
+  jwt:
+    access-token-expiry: 900
+    refresh-token-expiry: 604800
+  stripe:
+    secret-key: ${STRIPE_SECRET_KEY:sk_test_dummy_not_a_real_key}
+    publishable-key: ${STRIPE_PUBLISHABLE_KEY:pk_test_dummy_not_a_real_key}
+    webhook-secret: ${STRIPE_WEBHOOK_SECRET:whsec_dummy_not_a_real_secret}
+    advanced-price-id: ${STRIPE_ADVANCED_PRICE_ID:price_dummy_advanced_test}
+    pro-price-id: ${STRIPE_PRO_PRICE_ID:price_dummy_pro_test}
+  cors:
+    allowed-origins:
+      - http://localhost:3000
+  frontend-url: http://localhost:3000
+  rate-limit:
+    auth-attempts: 5
+    auth-lockout-minutes: 15
+
+logging:
+  level:
+    root: WARN
+    au.com.naplanprep: INFO

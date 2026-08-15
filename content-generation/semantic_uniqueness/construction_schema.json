@@ -1,0 +1,272 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "NAPLANPrep Semantic Construction Signature",
+  "description": "Structural fingerprint for a single question. Two questions with identical signatures are semantic duplicates regardless of surface wording.",
+
+  "definitions": {
+
+    "NumeracyConstruction": {
+      "description": "One of 24 named numeracy construction types",
+      "enum": [
+        "addition_no_carry",
+        "addition_with_carry",
+        "addition_multi_step",
+        "subtraction_no_borrow",
+        "subtraction_with_borrow",
+        "subtraction_multi_step",
+        "multiplication_basic_fact",
+        "multiplication_equal_groups",
+        "multiplication_2digit_1digit",
+        "multiplication_by_10_100",
+        "division_equal_share",
+        "division_by_factor",
+        "division_equal_groups_unknown_group_size",
+        "money_add",
+        "money_subtract_change",
+        "money_multi_step",
+        "elapsed_time_whole_hours",
+        "elapsed_time_minutes",
+        "time_facts",
+        "fraction_of_quantity",
+        "fraction_compare",
+        "fraction_equivalent",
+        "place_value_identify",
+        "place_value_order",
+        "measurement_length",
+        "measurement_mass",
+        "measurement_capacity",
+        "area_rectangle",
+        "perimeter_rectangle",
+        "pattern_identify_rule",
+        "pattern_find_missing",
+        "pattern_extend",
+        "data_read_graph",
+        "data_interpret_graph",
+        "data_statistics_range",
+        "probability_most_likely",
+        "probability_fraction",
+        "probability_cardinal",
+        "shape_2d_properties",
+        "shape_3d_properties",
+        "shape_sides_corners",
+        "count_forward",
+        "count_backward",
+        "number_order",
+        "number_halfway"
+      ]
+    },
+
+    "DistractorSignature": {
+      "description": "Pattern of wrong answers relative to the correct answer",
+      "enum": [
+        "OFF_BY_ONE",
+        "WRONG_OPERATION",
+        "PLACE_VALUE_SWAP",
+        "PART_WHOLE_CONFUSION",
+        "DENOMINATOR_AS_ANSWER",
+        "COMPLEMENT_ERROR",
+        "REVERSED_SUBTRACTION",
+        "MULTIPLICATION_INSTEAD_OF_DIVISION",
+        "DIVISION_INSTEAD_OF_MULTIPLICATION",
+        "FORGOT_CARRY",
+        "FORGOT_BORROW",
+        "WRONG_UNIT",
+        "WRONG_FORMULA",
+        "PLAUSIBLE_NEAR_MISS",
+        "NONE"
+      ]
+    },
+
+    "ReadingGenre": {
+      "enum": [
+        "narrative_fiction",
+        "narrative_adventure",
+        "narrative_fantasy",
+        "narrative_historical",
+        "informational_science",
+        "informational_social_studies",
+        "informational_biography",
+        "informational_how_to",
+        "persuasive_letter",
+        "persuasive_speech",
+        "persuasive_advertisement",
+        "poetry_rhyming",
+        "poetry_free_verse",
+        "procedural_recipe",
+        "procedural_instructions",
+        "report_factual",
+        "report_observation",
+        "newspaper_article",
+        "diary_journal",
+        "interview_dialogue"
+      ]
+    },
+
+    "WritingTaskType": {
+      "enum": [
+        "narrative_personal",
+        "narrative_imaginative",
+        "persuasive_opinion",
+        "persuasive_argument",
+        "informative_report",
+        "informative_explanation"
+      ]
+    },
+
+    "SpellingPattern": {
+      "enum": [
+        "digraph_sh",
+        "digraph_ch",
+        "digraph_th",
+        "digraph_wh",
+        "digraph_ph",
+        "blend_initial_consonant",
+        "blend_final_consonant",
+        "long_vowel_silent_e",
+        "long_vowel_vowel_pair",
+        "short_vowel_cvc",
+        "double_consonant",
+        "suffix_ed",
+        "suffix_ing",
+        "suffix_ly",
+        "suffix_tion",
+        "suffix_ness",
+        "prefix_un",
+        "prefix_re",
+        "prefix_dis",
+        "prefix_mis",
+        "irregular_common",
+        "multisyllabic_stress",
+        "schwa_vowel",
+        "homophones",
+        "silent_letters"
+      ]
+    },
+
+    "NumeracySignature": {
+      "type": "object",
+      "required": ["construction", "known_quantities", "unknown", "result_range", "context_category"],
+      "properties": {
+        "construction":      { "$ref": "#/definitions/NumeracyConstruction" },
+        "known_quantities":  {
+          "description": "Sorted array of the significant given numbers (not operands derived by student). E.g. [12, 4] for '12 biscuits, 4 friends'.",
+          "type": "array",
+          "items": { "type": "number" }
+        },
+        "unknown":           {
+          "description": "What the question asks the student to find",
+          "enum": ["total", "part", "difference", "factor", "product", "quotient",
+                   "group_size", "number_of_groups", "fraction_of_quantity",
+                   "missing_term", "rule", "area", "perimeter", "elapsed_time",
+                   "start_time", "end_time", "probability", "which_number",
+                   "how_many", "which_shape", "comparison", "true_statement"]
+        },
+        "result_range":      {
+          "description": "Magnitude band of the correct answer",
+          "enum": ["0-10", "11-20", "21-50", "51-100", "101-500", "501-1000", "1001+",
+                   "fraction", "decimal", "probability_fraction"]
+        },
+        "context_category":  {
+          "description": "Real-world scenario category (NONE for abstract)",
+          "enum": ["NONE", "food", "money", "sport", "animals", "school",
+                   "nature", "travel", "home", "shopping", "time_schedule",
+                   "measurement_craft", "data_survey"]
+        },
+        "distractor_signature": { "$ref": "#/definitions/DistractorSignature" }
+      }
+    },
+
+    "ReadingSignature": {
+      "type": "object",
+      "required": ["genre", "theme", "question_skill"],
+      "properties": {
+        "genre":         { "$ref": "#/definitions/ReadingGenre" },
+        "theme":         {
+          "description": "Core subject of the passage",
+          "type": "string"
+        },
+        "plot_structure":{
+          "description": "Narrative arc present (for fiction)",
+          "enum": ["problem_solution", "journey_return", "discovery", "conflict_resolution",
+                   "mystery_reveal", "character_change", "day_in_life", "N/A"]
+        },
+        "question_skill":{
+          "description": "Reading comprehension skill tested",
+          "enum": ["main_idea", "author_purpose", "inference", "vocabulary_in_context",
+                   "text_structure", "compare_contrast", "cause_effect",
+                   "fact_opinion", "sequence", "summarise", "evaluate_argument",
+                   "retrieve_locate", "interpret_integrate"]
+        },
+        "stimulus_fingerprint": {
+          "description": "Short slug uniquely identifying the passage (title + opening sentence hash)",
+          "type": "string"
+        }
+      }
+    },
+
+    "WritingSignature": {
+      "type": "object",
+      "required": ["task_type", "scenario"],
+      "properties": {
+        "task_type":  { "$ref": "#/definitions/WritingTaskType" },
+        "scenario":   { "description": "One-line scenario label", "type": "string" },
+        "purpose":    { "description": "Audience + purpose label", "type": "string" }
+      }
+    },
+
+    "SpellingSignature": {
+      "type": "object",
+      "required": ["target_word", "phonological_pattern"],
+      "properties": {
+        "target_word":          { "type": "string" },
+        "phonological_pattern": { "$ref": "#/definitions/SpellingPattern" },
+        "syllable_count":       { "type": "integer" },
+        "word_frequency":       { "enum": ["high", "medium", "low"] }
+      }
+    },
+
+    "AudioSignature": {
+      "type": "object",
+      "required": ["target_word"],
+      "properties": {
+        "target_word":   { "type": "string" },
+        "audio_context": { "type": "string" }
+      }
+    },
+
+    "GrammarSignature": {
+      "type": "object",
+      "required": ["grammar_skill"],
+      "properties": {
+        "grammar_skill": {
+          "enum": ["noun_type", "verb_tense", "adjective_use", "adverb_use",
+                   "pronoun_agreement", "subject_verb_agreement",
+                   "punctuation_comma", "punctuation_apostrophe",
+                   "punctuation_speech_marks", "punctuation_sentence_end",
+                   "sentence_type", "clause_type", "conjunction_use",
+                   "preposition_use", "determiner_use", "active_passive"]
+        },
+        "sentence_stem": {
+          "description": "First 6 words of the stimulus sentence (normalised lowercase)",
+          "type": "string"
+        }
+      }
+    }
+  },
+
+  "type": "object",
+  "required": ["question_id", "domain", "year_level", "signature_type"],
+  "properties": {
+    "question_id":     { "type": "string", "format": "uuid" },
+    "domain":          { "enum": ["NUMERACY", "READING", "WRITING", "SPELLING", "GRAMMAR_PUNCTUATION"] },
+    "year_level":      { "enum": [3, 5, 7, 9] },
+    "difficulty_band": { "type": "integer", "minimum": 1, "maximum": 10 },
+    "signature_type":  { "enum": ["NUMERACY", "READING", "WRITING", "SPELLING", "AUDIO", "GRAMMAR"] },
+    "numeracy":   { "$ref": "#/definitions/NumeracySignature" },
+    "reading":    { "$ref": "#/definitions/ReadingSignature" },
+    "writing":    { "$ref": "#/definitions/WritingSignature" },
+    "spelling":   { "$ref": "#/definitions/SpellingSignature" },
+    "audio":      { "$ref": "#/definitions/AudioSignature" },
+    "grammar":    { "$ref": "#/definitions/GrammarSignature" }
+  }
+}

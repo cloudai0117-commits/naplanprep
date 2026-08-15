@@ -23,14 +23,6 @@ public interface ExamSessionRepository extends JpaRepository<ExamSession, UUID> 
 
     Page<ExamSession> findByExamIdAndStatus(UUID examId, ExamSession.SessionStatus status, Pageable pageable);
 
-    /** Finds a student's completed session for a specific admin exam. */
-    Optional<ExamSession> findByUserIdAndExamIdAndStatus(
-        UUID userId, UUID examId, ExamSession.SessionStatus status);
-
-    /** True if the student has already submitted this admin exam. */
-    boolean existsByUserIdAndExamIdAndStatus(
-        UUID userId, UUID examId, ExamSession.SessionStatus status);
-
     List<ExamSession> findByUserId(UUID userId);
 
     @Query("SELECT es FROM ExamSession es WHERE es.userId = :userId AND es.status IN :statuses ORDER BY es.createdAt DESC")
@@ -44,4 +36,13 @@ public interface ExamSessionRepository extends JpaRepository<ExamSession, UUID> 
     List<ExamSession> findSubmittedByUserIdAndExamIds(
         @Param("userId") UUID userId,
         @Param("examIds") Collection<UUID> examIds);
+
+    /**
+     * Idempotent exam start: return an existing IN_PROGRESS session for this user+exam.
+     * The DB partial unique index (uq_user_exam_inprogress) enforces at most one result.
+     */
+    Optional<ExamSession> findByUserIdAndExamIdAndStatus(UUID userId, UUID examId, ExamSession.SessionStatus status);
+
+    /** True if the student has already submitted or is in progress for this admin exam. */
+    boolean existsByUserIdAndExamIdAndStatus(UUID userId, UUID examId, ExamSession.SessionStatus status);
 }

@@ -20,9 +20,15 @@ app:
     access-token-expiry: 900
     refresh-token-expiry: 604800
   stripe:
-    secret-key: sk_test_placeholder
-    webhook-secret: whsec_dummy
-    publishable-key: pk_test_dummy
+    # Test profile: dummy values that cannot authenticate with Stripe.
+    # Tests that actually call the Stripe API must mock the Stripe client or
+    # provide real keys via environment variables.
+    # The dummy defaults allow the application context to start without real keys.
+    secret-key: ${STRIPE_SECRET_KEY:sk_test_dummy_not_a_real_key}
+    publishable-key: ${STRIPE_PUBLISHABLE_KEY:pk_test_dummy_not_a_real_key}
+    webhook-secret: ${STRIPE_WEBHOOK_SECRET:whsec_dummy_not_a_real_secret}
+    advanced-price-id: ${STRIPE_ADVANCED_PRICE_ID:price_dummy_advanced_test}
+    pro-price-id: ${STRIPE_PRO_PRICE_ID:price_dummy_pro_test}
   cors:
     allowed-origins:
       - http://localhost:3000

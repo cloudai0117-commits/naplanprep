@@ -3,6 +3,86 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import apiClient from '@/api/client'
 
+// Simple 4-operation calculator widget for permitted questions.
+// Rendered only when the current question's calculatorAllowed === true (server-authoritative).
+function CalculatorWidget() {
+  const [display, setDisplay] = useState('0')
+  const [pending, setPending] = useState<number | null>(null)
+  const [op, setOp]           = useState<string | null>(null)
+  const [fresh, setFresh]     = useState(true)
+
+  const input = (char: string) => {
+    if (fresh) { setDisplay(char === '.' ? '0.' : char); setFresh(false) }
+    else if (char === '.' && display.includes('.')) return
+    else setDisplay(display === '0' ? char : display + char)
+  }
+
+  const operation = (nextOp: string) => {
+    const val = parseFloat(display)
+    if (pending !== null && op) {
+      const result = compute(pending, val, op)
+      setDisplay(String(result)); setPending(result)
+    } else {
+      setPending(val)
+    }
+    setOp(nextOp); setFresh(true)
+  }
+
+  const compute = (a: number, b: number, o: string) => {
+    if (o === '+') return a + b
+    if (o === '−') return a - b
+    if (o === '×') return a * b
+    if (o === '÷') return b !== 0 ? a / b : 0
+    return b
+  }
+
+  const equals = () => {
+    if (pending === null || op === null) return
+    const result = compute(pending, parseFloat(display), op)
+    const str = String(parseFloat(result.toPrecision(10)))
+    setDisplay(str); setPending(null); setOp(null); setFresh(true)
+  }
+
+  const clear = () => { setDisplay('0'); setPending(null); setOp(null); setFresh(true) }
+
+  const btn = (label: string, action: () => void, cls = '') => (
+    <button
+      key={label}
+      onClick={action}
+      className={`p-2 text-sm font-medium rounded border border-gray-300 hover:bg-gray-100 transition-colors ${cls}`}
+    >
+      {label}
+    </button>
+  )
+
+  return (
+    <div data-testid="calculator-widget" className="mt-4 p-3 bg-gray-50 border border-gray-200 rounded-lg w-48 select-none">
+      <div className="text-right font-mono text-base bg-white border border-gray-300 rounded px-2 py-1 mb-2 overflow-hidden truncate">
+        {display}
+      </div>
+      <div className="grid grid-cols-4 gap-1">
+        {btn('C',   clear,                  'col-span-2 bg-red-50 text-red-700')}
+        {btn('÷',   () => operation('÷'),   'bg-blue-50 text-blue-700')}
+        {btn('×',   () => operation('×'),   'bg-blue-50 text-blue-700')}
+        {btn('7',   () => input('7'))}
+        {btn('8',   () => input('8'))}
+        {btn('9',   () => input('9'))}
+        {btn('−',   () => operation('−'),   'bg-blue-50 text-blue-700')}
+        {btn('4',   () => input('4'))}
+        {btn('5',   () => input('5'))}
+        {btn('6',   () => input('6'))}
+        {btn('+',   () => operation('+'),   'bg-blue-50 text-blue-700')}
+        {btn('1',   () => input('1'))}
+        {btn('2',   () => input('2'))}
+        {btn('3',   () => input('3'))}
+        {btn('=',   equals,                 'row-span-2 bg-green-100 text-green-800')}
+        {btn('0',   () => input('0'),       'col-span-2')}
+        {btn('.',   () => input('.'))}
+      </div>
+    </div>
+  )
+}
+
 function useTimer(expiresAt: string | undefined) {
   const [remaining, setRemaining] = useState(0)
 
@@ -221,7 +301,27 @@ export default function ExamPlayer() {
                   </button>
                 </div>
 
-                {currentQuestion.options?.options && (
+                {/* Calculator: shown only when the question explicitly permits it.
+                  calculatorAllowed comes from the server-side snapshot — authoritative. */}
+              {currentQuestion.calculatorAllowed === true && <CalculatorWidget key={currentQuestionId} />}
+
+              {currentQuestion.questionType === 'SHORT_ANSWER' ? (
+                  <div className="mt-4">
+                    <input
+                      type="text"
+                      autoComplete="off"
+                      autoCorrect="off"
+                      autoCapitalize="off"
+                      spellCheck={false}
+                      data-testid="short-answer-input"
+                      placeholder="Type the missing word here"
+                      value={answers[currentQuestionId] || ''}
+                      onChange={(e) => handleAnswer(currentQuestionId, e.target.value)}
+                      className="w-full border-2 border-gray-300 rounded-lg px-4 py-3 text-lg font-medium text-gray-800 focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-200 transition-colors"
+                    />
+                    <p className="mt-2 text-xs text-gray-500">Type one word. Spelling counts.</p>
+                  </div>
+                ) : currentQuestion.options?.options && (
                   <div className="space-y-2">
                     {currentQuestion.options.options.map((opt: string) => (
                       <label

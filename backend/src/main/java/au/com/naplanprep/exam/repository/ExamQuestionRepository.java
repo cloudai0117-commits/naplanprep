@@ -15,6 +15,10 @@ public interface ExamQuestionRepository extends JpaRepository<ExamQuestion, Exam
     @Query("SELECT eq FROM ExamQuestion eq JOIN FETCH eq.question WHERE eq.exam.id = :examId ORDER BY eq.questionOrder ASC")
     List<ExamQuestion> findByExamIdOrdered(@Param("examId") UUID examId);
 
+    /** Alias used by ExamSnapshotService — same query, stable name for snapshot writes. */
+    @Query("SELECT eq FROM ExamQuestion eq JOIN FETCH eq.question WHERE eq.exam.id = :examId ORDER BY eq.questionOrder ASC")
+    List<ExamQuestion> findByExamIdOrderByQuestionOrder(@Param("examId") UUID examId);
+
     boolean existsByExam_IdAndQuestion_Id(UUID examId, UUID questionId);
 
     @Modifying

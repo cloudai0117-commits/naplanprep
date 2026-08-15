@@ -46,7 +46,7 @@ public class ProgressService {
             .average()
             .orElse(0);
         overview.put("averageScore", Math.round(avgScore * 10.0) / 10.0);
-        overview.put("lastNaplanBand", results.get(0).getNaplanBand());
+        overview.put("lastPracticeBand", results.get(0).getPracticeBand());
 
         Map<String, List<Double>> domainScores = new HashMap<>();
         for (ExamResult result : results) {
@@ -66,7 +66,7 @@ public class ProgressService {
                 Map<String, Object> m = new HashMap<>();
                 m.put("date", r.getCalculatedAt().toString());
                 m.put("score", r.getScorePercentage());
-                m.put("band", r.getNaplanBand());
+                m.put("band", r.getPracticeBand());
                 return m;
             })
             .collect(Collectors.toList());

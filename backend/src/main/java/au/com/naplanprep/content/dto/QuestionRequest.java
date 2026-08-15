@@ -4,6 +4,7 @@ import au.com.naplanprep.content.entity.Question;
 import au.com.naplanprep.exam.entity.PackageType;
 import jakarta.validation.constraints.*;
 
+import java.util.List;
 import java.util.Map;
 
 public record QuestionRequest(
@@ -33,10 +34,12 @@ public record QuestionRequest(
     @NotBlank(message = "Question text is required")
     String questionText,
 
-    Map<String, Object> options,
+    List<Map<String, Object>> options,
 
     @NotNull(message = "Correct answer is required")
     Map<String, Object> correctAnswer,
 
-    String explanation
+    String explanation,
+
+    Boolean calculatorAllowed
 ) {}

@@ -191,7 +191,7 @@ public class AdminExamService {
                 row.put("totalQuestions", r.getTotalQuestions());
                 row.put("correctAnswers", r.getCorrectAnswers());
                 row.put("percentage", r.getScorePercentage());
-                row.put("band", r.getNaplanBand());
+                row.put("band", r.getPracticeBand());
             });
             return row;
         }).toList();

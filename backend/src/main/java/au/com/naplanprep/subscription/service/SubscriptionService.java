@@ -44,18 +44,33 @@ public class SubscriptionService {
 
     @PostConstruct
     public void init() {
-        Stripe.apiKey = appProperties.getStripe().getSecretKey();
+        String key = appProperties.getStripe().getSecretKey();
+        if (key == null || key.isBlank()) {
+            log.warn("STRIPE_NOT_CONFIGURED — STRIPE_SECRET_KEY is not set. "
+                + "Payment features will be unavailable until the environment variable is configured.");
+            return;
+        }
+        Stripe.apiKey = key;
+        log.info("STRIPE_INITIALIZED — Stripe API client configured.");
     }
 
-    public List<Plan> getPlans() {
-        return planRepository.findByActiveTrueOrderByMonthlyPriceAsc();
-    }
+    // ─────────────────────────────────────────────────────────────
+    // Checkout
+    // ─────────────────────────────────────────────────────────────
 
+    /**
+     * Creates a one-time payment checkout session (Mode.PAYMENT, NOT Mode.SUBSCRIPTION).
+     * Packages grant 1-year access from purchase date.
+     * Price IDs are read from STRIPE_ADVANCED_PRICE_ID / STRIPE_PRO_PRICE_ID env vars via AppProperties.
+     */
     @Transactional
-    public String createCheckoutSession(UUID userId, String planSlug, String interval, String successUrl, String cancelUrl) {
-        String secretKey = appProperties.getStripe().getSecretKey();
-        if (secretKey == null || secretKey.contains("placeholder")) {
-            throw new BusinessException("Stripe payment gateway is not configured in this environment. Please contact support.");
+    public String createCheckoutSession(UUID userId, String planSlug, String interval,
+                                        String successUrl, String cancelUrl) {
+        AppProperties.Stripe stripeConfig = appProperties.getStripe();
+        String secretKey = stripeConfig.getSecretKey();
+        if (secretKey == null || secretKey.isBlank()) {
+            throw new BusinessException(
+                "Payment unavailable: STRIPE_SECRET_KEY is not configured in this environment.");
         }
 
         Plan plan = planRepository.findBySlug(planSlug)
@@ -64,35 +79,48 @@ public class SubscriptionService {
         User user = userRepository.findByIdWithProfile(userId)
             .orElseThrow(() -> new ResourceNotFoundException("User", userId.toString()));
 
-        String priceId = "annual".equals(interval) ? plan.getStripeAnnualPriceId() : plan.getStripeMonthlyPriceId();
-        if (priceId == null || priceId.contains("placeholder")) {
-            throw new BusinessException("Payment not configured for this plan. Please contact support.");
+        String priceId = resolvePriceId(planSlug, stripeConfig);
+        if (priceId == null || priceId.isBlank()) {
+            throw new BusinessException(
+                "Payment unavailable: price ID not configured for plan '" + planSlug
+                + "'. Set STRIPE_" + planSlug.toUpperCase() + "_PRICE_ID in the environment.");
         }
+        log.info("PLAN_RESOLVED userId={} planSlug={} priceId=price_***", userId, planSlug);
 
         try {
             String customerId = ensureStripeCustomer(user);
 
+            String resolvedSuccessUrl = successUrl != null ? successUrl
+                : appProperties.getFrontendUrl() + "/dashboard?checkout=success&session_id={CHECKOUT_SESSION_ID}";
+            String resolvedCancelUrl = cancelUrl != null ? cancelUrl
+                : appProperties.getFrontendUrl() + "/pricing";
+
             var params = SessionCreateParams.builder()
-                .setMode(SessionCreateParams.Mode.SUBSCRIPTION)
+                .setMode(SessionCreateParams.Mode.PAYMENT)
                 .setCustomer(customerId)
-                .setSuccessUrl(successUrl != null ? successUrl
-                    : appProperties.getFrontendUrl() + "/dashboard?checkout=success&session_id={CHECKOUT_SESSION_ID}")
-                .setCancelUrl(cancelUrl != null ? cancelUrl : appProperties.getFrontendUrl() + "/pricing")
+                .setSuccessUrl(resolvedSuccessUrl)
+                .setCancelUrl(resolvedCancelUrl)
                 .addLineItem(SessionCreateParams.LineItem.builder()
                     .setPrice(priceId)
                     .setQuantity(1L)
                     .build())
-                .setSubscriptionData(SessionCreateParams.SubscriptionData.builder()
-                    .setTrialPeriodDays("pro".equals(planSlug) || "premium".equals(planSlug) ? 7L : null)
+                // Metadata on the Checkout Session — read by handleCheckoutCompleted via stripeSession.getMetadata()
+                .putMetadata("userId", userId.toString())
+                .putMetadata("planSlug", planSlug)
+                // Also on PaymentIntent for any PaymentIntent-level webhook events
+                .setPaymentIntentData(SessionCreateParams.PaymentIntentData.builder()
                     .putMetadata("userId", userId.toString())
                     .putMetadata("planSlug", planSlug)
                     .build())
                 .build();
 
             Session session = Session.create(params);
+            log.info("CHECKOUT_CREATED userId={} planSlug={} sessionId={} mode=PAYMENT",
+                userId, planSlug, session.getId());
             return session.getUrl();
+
         } catch (StripeException e) {
-            log.error("Stripe checkout error", e);
+            log.error("CHECKOUT_STRIPE_ERROR userId={} planSlug={} error={}", userId, planSlug, e.getMessage());
             throw new BusinessException("Failed to create checkout session: " + e.getMessage());
         }
     }
@@ -116,9 +144,13 @@ public class SubscriptionService {
                 com.stripe.model.billingportal.Session.create(params);
             return session.getUrl();
         } catch (StripeException e) {
-            log.error("Stripe portal error", e);
+            log.error("Stripe portal error: {}", e.getMessage());
             throw new BusinessException("Failed to create portal session");
         }
+    }
+
+    public List<Plan> getPlans() {
+        return planRepository.findByActiveTrueOrderByMonthlyPriceAsc();
     }
 
     public Optional<Subscription> getCurrentSubscription(UUID userId) {
@@ -126,85 +158,294 @@ public class SubscriptionService {
             List.of(Subscription.SubscriptionStatus.ACTIVE, Subscription.SubscriptionStatus.TRIALING));
     }
 
+    /**
+     * Cancels a subscription.
+     * For legacy recurring subscriptions: cancels via Stripe API.
+     * For ONE_TIME purchases: there is no Stripe subscription to cancel — marks as CANCELLED locally only.
+     */
     @Transactional
     public void cancelSubscription(UUID userId) {
         Subscription sub = subscriptionRepository.findFirstByUserIdAndStatusInOrderByCreatedAtDesc(userId,
             List.of(Subscription.SubscriptionStatus.ACTIVE, Subscription.SubscriptionStatus.TRIALING))
             .orElseThrow(() -> new BusinessException("No active subscription found"));
 
+        if (sub.getPurchaseType() == Subscription.PurchaseType.ONE_TIME) {
+            // ONE_TIME purchases have no Stripe Subscription object — cancel locally
+            sub.setStatus(Subscription.SubscriptionStatus.CANCELLED);
+            sub.setCancelledAt(Instant.now());
+            subscriptionRepository.save(sub);
+            syncUserTagsFromSubscriptions(userId);
+            log.info("ONE_TIME subscription cancelled locally userId={} subId={}", userId, sub.getId());
+            return;
+        }
+
+        // Legacy recurring subscription — cancel via Stripe
+        if (sub.getStripeSubscriptionId() == null) {
+            throw new BusinessException("No Stripe subscription ID found — cannot cancel");
+        }
+
         try {
             com.stripe.model.Subscription stripeSub =
                 com.stripe.model.Subscription.retrieve(sub.getStripeSubscriptionId());
             stripeSub.cancel();
         } catch (StripeException e) {
-            log.error("Stripe cancel error", e);
+            log.error("Stripe cancel error userId={} error={}", userId, e.getMessage());
             throw new BusinessException("Failed to cancel subscription");
         }
 
         sub.setStatus(Subscription.SubscriptionStatus.CANCELLED);
         sub.setCancelledAt(Instant.now());
         subscriptionRepository.save(sub);
+        syncUserTagsFromSubscriptions(userId);
     }
 
+    // ─────────────────────────────────────────────────────────────
+    // Webhook — PAYMENT model (ONE_TIME purchases)
+    // ─────────────────────────────────────────────────────────────
+
+    /**
+     * Receives and dispatches a Stripe webhook event.
+     *
+     * TRANSACTION BOUNDARY: @Transactional here ensures that subscription creation and tag sync
+     * are in the same DB transaction. If tag sync fails, the subscription row is also rolled back,
+     * preventing partial entitlement state.
+     *
+     * SIGNATURE ERRORS: BusinessException("Invalid webhook signature") propagates to 400 response.
+     * This is correct — Stripe should not retry invalid-signature events.
+     *
+     * PROCESSING ERRORS: Caught internally and logged. Controller returns 200 so Stripe does
+     * not retry for transient processing failures. The idempotency guard prevents duplicate
+     * entitlements on any retry that does succeed.
+     */
     @Transactional
     public void handleWebhook(String payload, String sigHeader) {
-        Event event;
-        String webhookSecret = appProperties.getStripe().getWebhookSecret();
-        boolean skipVerification = webhookSecret == null
-            || webhookSecret.contains("placeholder")
-            || webhookSecret.equals("whsec_dummy");
+        Event event = parseAndValidate(payload, sigHeader);
+
+        log.info("WEBHOOK_RECEIVED eventType={} eventId={}", event.getType(), event.getId());
+
         try {
-            if (skipVerification) {
-                log.warn("STRIPE_WEBHOOK_SECRET is not configured — skipping signature verification");
-                event = ApiResource.GSON.fromJson(payload, Event.class);
-            } else {
-                event = Webhook.constructEvent(payload, sigHeader, webhookSecret);
+            switch (event.getType()) {
+                // ONE_TIME purchase — synchronous card payment
+                case "checkout.session.completed"          -> handleCheckoutCompleted(event);
+                // ONE_TIME purchase — async payment (bank debit, BECS, SEPA etc.)
+                case "checkout.session.async_payment_succeeded" -> handleCheckoutCompleted(event);
+                // Async payment failed — log only; no entitlement action needed
+                case "checkout.session.async_payment_failed"    -> handleAsyncPaymentFailed(event);
+                // Legacy recurring subscription events — retained for pre-existing rows
+                case "customer.subscription.created",
+                     "customer.subscription.updated"      -> handleSubscriptionUpsert(event);
+                case "customer.subscription.deleted"       -> handleSubscriptionDeleted(event);
+                case "invoice.payment_failed"              -> handlePaymentFailed(event);
+                default -> log.debug("WEBHOOK_IGNORED eventType={} eventId={}",
+                    event.getType(), event.getId());
             }
-        } catch (SignatureVerificationException e) {
-            throw new BusinessException("Invalid webhook signature");
         } catch (Exception e) {
-            throw new BusinessException("Invalid webhook payload");
-        }
-
-        log.info("Stripe webhook: {}", event.getType());
-
-        switch (event.getType()) {
-            case "customer.subscription.created", "customer.subscription.updated" -> handleSubscriptionUpsert(event);
-            case "customer.subscription.deleted" -> handleSubscriptionDeleted(event);
-            case "invoice.payment_failed" -> handlePaymentFailed(event);
-            default -> log.debug("Unhandled webhook event: {}", event.getType());
+            // Log the error but do not rethrow — return 200 so Stripe does not retry indefinitely.
+            // The idempotency guard on stripe_payment_intent_id handles any eventual retry.
+            log.error("WEBHOOK_PROCESSING_ERROR eventType={} eventId={} error={}",
+                event.getType(), event.getId(), e.getMessage(), e);
         }
     }
 
     /**
-     * Proactively fetches the Stripe checkout session and syncs the subscription
-     * to the local DB. Called on the success redirect so the plan updates immediately
-     * without waiting for the async webhook to arrive.
+     * Validates the Stripe signature and parses the event.
+     * Throws BusinessException (→ 400) on invalid signature.
      */
+    private Event parseAndValidate(String payload, String sigHeader) {
+        String webhookSecret = appProperties.getStripe().getWebhookSecret();
+        boolean skipVerification = webhookSecret == null
+            || webhookSecret.isBlank()
+            || webhookSecret.contains("placeholder")
+            || webhookSecret.contains("dummy");
+        try {
+            if (skipVerification) {
+                log.warn("WEBHOOK_SIGNATURE_SKIP — webhook secret not configured; "
+                    + "signature validation disabled. Set app.stripe.webhook-secret in production.");
+                return ApiResource.GSON.fromJson(payload, Event.class);
+            }
+            log.debug("WEBHOOK_SIGNATURE_VALID");
+            return Webhook.constructEvent(payload, sigHeader, webhookSecret);
+        } catch (SignatureVerificationException e) {
+            log.warn("WEBHOOK_SIGNATURE_INVALID sigHeader={} error={}", sigHeader, e.getMessage());
+            throw new BusinessException("Invalid webhook signature");
+        } catch (Exception e) {
+            log.error("WEBHOOK_PARSE_ERROR error={}", e.getMessage());
+            throw new BusinessException("Invalid webhook payload");
+        }
+    }
+
+    /**
+     * Handles checkout.session.completed and checkout.session.async_payment_succeeded.
+     *
+     * CRITICAL: Only creates entitlement when payment_status == "paid".
+     * - Card payments: payment_status is "paid" when checkout.session.completed fires. ✅
+     * - 3DS (4000 0025 6000 0002): payment_status is "paid" after authentication. ✅
+     * - Declined (4000 0000 0000 9995): Stripe does NOT fire completed event. ✅
+     * - Async methods: payment_status is "unpaid" on session.completed; entitlement is deferred
+     *   until checkout.session.async_payment_succeeded fires with payment_status == "paid". ✅
+     */
+    private void handleCheckoutCompleted(Event event) {
+        var sessionOpt = event.getDataObjectDeserializer().getObject();
+        if (sessionOpt.isEmpty()) {
+            log.warn("CHECKOUT_COMPLETED_DESERIALIZE_EMPTY eventId={}", event.getId());
+            return;
+        }
+        Session stripeSession = (Session) sessionOpt.get();
+
+        // Only process PAYMENT mode sessions (one-time); ignore any legacy subscription checkouts
+        if (!"payment".equals(stripeSession.getMode())) {
+            log.debug("CHECKOUT_COMPLETED_MODE_SKIP mode={} sessionId={}",
+                stripeSession.getMode(), stripeSession.getId());
+            return;
+        }
+
+        // CRITICAL: Only grant entitlement once payment is confirmed.
+        // "paid" = payment completed. "unpaid" = async method still pending.
+        if (!"paid".equals(stripeSession.getPaymentStatus())) {
+            log.info("CHECKOUT_COMPLETED_NOT_PAID payment_status={} sessionId={} — awaiting payment",
+                stripeSession.getPaymentStatus(), stripeSession.getId());
+            return;
+        }
+
+        String userId = stripeSession.getMetadata() != null
+            ? stripeSession.getMetadata().get("userId") : null;
+        String planSlug = stripeSession.getMetadata() != null
+            ? stripeSession.getMetadata().get("planSlug") : null;
+
+        if (userId == null || planSlug == null) {
+            log.error("CHECKOUT_COMPLETED_MISSING_METADATA sessionId={} userId={} planSlug={}",
+                stripeSession.getId(), userId, planSlug);
+            return;
+        }
+
+        Plan plan = planRepository.findBySlug(planSlug).orElse(null);
+        if (plan == null) {
+            log.error("CHECKOUT_COMPLETED_UNKNOWN_PLAN planSlug={} sessionId={}",
+                planSlug, stripeSession.getId());
+            return;
+        }
+
+        UUID uid = UUID.fromString(userId);
+        String paymentIntentId = stripeSession.getPaymentIntent();
+
+        // Idempotency guard: prevent duplicate entitlement on webhook replay
+        if (paymentIntentId != null) {
+            boolean alreadyProcessed = subscriptionRepository
+                .findByStripePaymentIntentId(paymentIntentId).isPresent();
+            if (alreadyProcessed) {
+                log.info("ENTITLEMENT_ALREADY_EXISTS paymentIntentId={} userId={} — skipping",
+                    paymentIntentId, userId);
+                return;
+            }
+        }
+
+        Instant now = Instant.now();
+        Subscription sub = Subscription.builder()
+            .userId(uid)
+            .plan(plan)
+            .purchaseType(Subscription.PurchaseType.ONE_TIME)
+            .status(Subscription.SubscriptionStatus.ACTIVE)
+            .stripePaymentIntentId(paymentIntentId)
+            .currentPeriodStart(now)
+            .expiresAt(now.plusSeconds(365L * 24 * 60 * 60))
+            .build();
+
+        subscriptionRepository.save(sub);
+        syncUserTagsFromSubscriptions(uid);
+
+        log.info("ENTITLEMENT_CREATED userId={} planSlug={} subId={} expiresAt={} paymentIntentId={}",
+            uid, planSlug, sub.getId(), sub.getExpiresAt(), paymentIntentId);
+    }
+
+    private void handleAsyncPaymentFailed(Event event) {
+        var sessionOpt = event.getDataObjectDeserializer().getObject();
+        if (sessionOpt.isEmpty()) return;
+        Session stripeSession = (Session) sessionOpt.get();
+        String userId = stripeSession.getMetadata() != null
+            ? stripeSession.getMetadata().get("userId") : null;
+        log.warn("ASYNC_PAYMENT_FAILED sessionId={} userId={} — no entitlement created",
+            stripeSession.getId(), userId);
+    }
+
+    // ─────────────────────────────────────────────────────────────
+    // Proactive sync — called on success redirect
+    // ─────────────────────────────────────────────────────────────
+
+    /**
+     * Proactively fetches the Stripe checkout session and syncs the subscription
+     * to the local DB. Called on the success redirect so the plan badge updates
+     * immediately without waiting for the async webhook to arrive.
+     *
+     * CRITICAL: Only creates entitlement when payment_status == "paid" — same rule
+     * as the webhook handler. Do not grant access from a redirect URL alone.
+     */
+    @Transactional
     public void syncFromCheckoutSession(UUID userId, String sessionId) {
         String secretKey = appProperties.getStripe().getSecretKey();
-        if (secretKey == null || secretKey.contains("placeholder") || sessionId == null || sessionId.isBlank()) {
+        if (secretKey == null || secretKey.isBlank() || secretKey.contains("placeholder")
+                || secretKey.contains("dummy") || sessionId == null || sessionId.isBlank()) {
             return;
         }
         try {
             Session session = Session.retrieve(sessionId);
+
             if (!"complete".equals(session.getStatus())) {
-                log.warn("Checkout session {} not complete (status={}), skipping sync", sessionId, session.getStatus());
+                log.warn("SYNC_SESSION_NOT_COMPLETE sessionId={} status={}", sessionId, session.getStatus());
                 return;
             }
-            String stripeSubId = session.getSubscription();
-            if (stripeSubId == null) {
-                log.warn("No subscription in completed checkout session: {}", sessionId);
+
+            // CRITICAL: check payment_status — "complete" status alone is insufficient for PAYMENT mode
+            if (!"paid".equals(session.getPaymentStatus())) {
+                log.info("SYNC_SESSION_NOT_PAID sessionId={} payment_status={} — awaiting payment",
+                    sessionId, session.getPaymentStatus());
                 return;
             }
-            com.stripe.model.Subscription stripeSub = com.stripe.model.Subscription.retrieve(stripeSubId);
-            processStripeSubscription(userId, stripeSub);
-            log.info("Synced subscription from checkout session {} for user {}", sessionId, userId);
+
+            if ("payment".equals(session.getMode())) {
+                String paymentIntentId = session.getPaymentIntent();
+                boolean already = paymentIntentId != null
+                    && subscriptionRepository.findByStripePaymentIntentId(paymentIntentId).isPresent();
+                if (!already) {
+                    String planSlug = session.getMetadata() != null ? session.getMetadata().get("planSlug") : null;
+                    Plan plan = planSlug != null ? planRepository.findBySlug(planSlug).orElse(null) : null;
+                    if (plan != null) {
+                        Instant now = Instant.now();
+                        Subscription sub = Subscription.builder()
+                            .userId(userId)
+                            .plan(plan)
+                            .purchaseType(Subscription.PurchaseType.ONE_TIME)
+                            .status(Subscription.SubscriptionStatus.ACTIVE)
+                            .stripePaymentIntentId(paymentIntentId)
+                            .currentPeriodStart(now)
+                            .expiresAt(now.plusSeconds(365L * 24 * 60 * 60))
+                            .build();
+                        subscriptionRepository.save(sub);
+                        syncUserTagsFromSubscriptions(userId);
+                        log.info("ENTITLEMENT_CREATED_VIA_SYNC userId={} planSlug={} sessionId={}",
+                            userId, planSlug, sessionId);
+                    }
+                } else {
+                    log.info("ENTITLEMENT_ALREADY_EXISTS_SYNC userId={} sessionId={}", userId, sessionId);
+                }
+            } else {
+                // Legacy recurring subscription sync
+                String stripeSubId = session.getSubscription();
+                if (stripeSubId != null) {
+                    com.stripe.model.Subscription stripeSub =
+                        com.stripe.model.Subscription.retrieve(stripeSubId);
+                    processStripeSubscription(userId, stripeSub);
+                }
+            }
+            log.info("SYNC_CHECKOUT_COMPLETE sessionId={} userId={}", sessionId, userId);
         } catch (Exception e) {
-            // Best-effort sync — swallow all errors so the controller always returns 200
-            log.warn("Could not sync from checkout session {}: {}", sessionId, e.getMessage());
+            log.warn("SYNC_CHECKOUT_ERROR sessionId={} userId={} error={}", sessionId, userId, e.getMessage());
+            // Best-effort sync — swallow errors so the controller always returns 200
         }
     }
+
+    // ─────────────────────────────────────────────────────────────
+    // Legacy recurring subscription handlers
+    // ─────────────────────────────────────────────────────────────
 
     private void handleSubscriptionUpsert(Event event) {
         var stripeSubOpt = event.getDataObjectDeserializer().getObject();
@@ -214,21 +455,16 @@ public class SubscriptionService {
         String userId = stripeSub.getMetadata().get("userId");
 
         if (userId == null) {
-            log.warn("Missing userId metadata in subscription: {}", stripeSub.getId());
+            log.warn("SUBSCRIPTION_UPSERT_MISSING_USER_ID stripeSubId={}", stripeSub.getId());
             return;
         }
 
         processStripeSubscription(UUID.fromString(userId), stripeSub);
     }
 
-    // Determine the plan and persist the subscription record — shared by webhook handler
-    // and proactive checkout-session sync so both paths stay in sync.
     private void processStripeSubscription(UUID userId, com.stripe.model.Subscription stripeSub) {
         String planSlug = stripeSub.getMetadata() != null ? stripeSub.getMetadata().get("planSlug") : null;
 
-        // Determine plan from price ID first — this handles portal upgrades where
-        // the metadata planSlug still reflects the original plan (metadata is not
-        // updated by Stripe when the customer changes plan via the billing portal).
         Plan plan = null;
         Subscription.BillingInterval billingInterval = Subscription.BillingInterval.MONTHLY;
         if (stripeSub.getItems() != null && !stripeSub.getItems().getData().isEmpty()) {
@@ -245,13 +481,12 @@ public class SubscriptionService {
             }
         }
 
-        // Fallback to metadata slug (works for initial checkout, price IDs may be placeholders in dev)
         if (plan == null && planSlug != null) {
             plan = planRepository.findBySlug(planSlug).orElse(null);
         }
 
         if (plan == null) {
-            log.warn("Could not determine plan for subscription: {}, planSlug={}", stripeSub.getId(), planSlug);
+            log.warn("SUBSCRIPTION_PLAN_NOT_FOUND stripeSubId={} planSlug={}", stripeSub.getId(), planSlug);
             return;
         }
 
@@ -266,6 +501,7 @@ public class SubscriptionService {
                 .userId(userId)
                 .plan(plan)
                 .stripeSubscriptionId(stripeSub.getId())
+                .purchaseType(Subscription.PurchaseType.SUBSCRIPTION)
                 .build();
         }
 
@@ -291,6 +527,7 @@ public class SubscriptionService {
             sub.setCancelledAt(Instant.now());
             subscriptionRepository.save(sub);
             syncUserTagsFromSubscriptions(sub.getUserId());
+            log.info("SUBSCRIPTION_CANCELLED stripeSubId={} userId={}", stripeSub.getId(), sub.getUserId());
         });
     }
 
@@ -304,31 +541,69 @@ public class SubscriptionService {
         subscriptionRepository.findByStripeSubscriptionId(stripeSubId).ifPresent(sub -> {
             sub.setStatus(Subscription.SubscriptionStatus.PAST_DUE);
             subscriptionRepository.save(sub);
-            log.warn("Payment failed for subscription: {}, user: {}", stripeSubId, sub.getUserId());
+            log.warn("PAYMENT_FAILED stripeSubId={} userId={}", stripeSubId, sub.getUserId());
         });
     }
 
+    // ─────────────────────────────────────────────────────────────
+    // Tag sync — cumulative tier model
+    // ─────────────────────────────────────────────────────────────
+
+    /**
+     * Recomputes and persists the user's package tag set from all active entitled subscriptions.
+     * Always includes FREE. PREMIUM plan includes FREE+ADVANCED+PREMIUM (cumulative).
+     *
+     * Called within the same @Transactional boundary as the subscription save (handleWebhook
+     * is @Transactional) so both the subscription row and the user_tags update commit together.
+     */
     private void syncUserTagsFromSubscriptions(UUID userId) {
         userRepository.findById(userId).ifPresent(user -> {
             Set<PackageType> tags = new HashSet<>();
             tags.add(PackageType.FREE);
+
             subscriptionRepository.findAllByUserIdAndStatusIn(userId,
                 List.of(Subscription.SubscriptionStatus.ACTIVE, Subscription.SubscriptionStatus.TRIALING))
-                .forEach(sub -> {
-                    PackageType tag = resolvePlanToPackageType(sub.getPlan());
-                    if (tag != null) tags.add(tag);
-                });
+                .stream()
+                .filter(Subscription::isEntitled)
+                .forEach(sub -> tags.addAll(resolvePlanToPackageTiers(sub.getPlan())));
+
             user.setTags(tags);
             userRepository.save(user);
+            log.info("TAGS_SYNCED userId={} tags={}", userId, tags);
         });
     }
 
-    private PackageType resolvePlanToPackageType(Plan plan) {
+    /**
+     * Returns all package tiers the plan grants access to.
+     * Tiers are cumulative: PREMIUM includes ADVANCED and FREE.
+     * Plan slugs after V33 migration: basic, advanced, pro (family deactivated).
+     *
+     * FREEZE: Do not change these mappings without updating ENTITLEMENT_ACCEPTANCE_REPORT.md.
+     *   basic / free → {FREE}          → 5 exams
+     *   advanced     → {FREE, ADVANCED} → 30 exams
+     *   pro / premium→ {FREE, ADVANCED, PREMIUM} → 80 exams
+     */
+    private Set<PackageType> resolvePlanToPackageTiers(Plan plan) {
         return switch (plan.getSlug().toLowerCase()) {
-            case "advanced" -> PackageType.ADVANCED;
-            case "premium", "pro" -> PackageType.PREMIUM;
-            case "free", "basic" -> PackageType.FREE;
-            default -> null;
+            case "premium", "pro" -> Set.of(PackageType.FREE, PackageType.ADVANCED, PackageType.PREMIUM);
+            case "advanced"       -> Set.of(PackageType.FREE, PackageType.ADVANCED);
+            case "free", "basic"  -> Set.of(PackageType.FREE);
+            default               -> {
+                log.warn("PLAN_SLUG_UNMAPPED slug={} — defaulting to FREE only", plan.getSlug());
+                yield Set.of(PackageType.FREE);
+            }
+        };
+    }
+
+    // ─────────────────────────────────────────────────────────────
+    // Helpers
+    // ─────────────────────────────────────────────────────────────
+
+    private String resolvePriceId(String planSlug, AppProperties.Stripe config) {
+        return switch (planSlug.toLowerCase()) {
+            case "advanced"          -> config.getAdvancedPriceId();
+            case "pro", "premium"    -> config.getProPriceId();
+            default                  -> null;
         };
     }
 
@@ -357,10 +632,10 @@ public class SubscriptionService {
     private Subscription.SubscriptionStatus mapStripeStatus(String stripeStatus) {
         return switch (stripeStatus) {
             case "trialing" -> Subscription.SubscriptionStatus.TRIALING;
-            case "active" -> Subscription.SubscriptionStatus.ACTIVE;
+            case "active"   -> Subscription.SubscriptionStatus.ACTIVE;
             case "past_due" -> Subscription.SubscriptionStatus.PAST_DUE;
-            case "unpaid" -> Subscription.SubscriptionStatus.UNPAID;
-            default -> Subscription.SubscriptionStatus.CANCELLED;
+            case "unpaid"   -> Subscription.SubscriptionStatus.UNPAID;
+            default         -> Subscription.SubscriptionStatus.CANCELLED;
         };
     }
 }

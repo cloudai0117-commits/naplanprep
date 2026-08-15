@@ -1,0 +1,88 @@
+# ─── UAT / PRODUCTION DEPLOYMENT GUIDE ───────────────────────────────────────
+# Do NOT put real values in this file. This is a documentation template only.
+#
+# All five Stripe variables are REQUIRED in UAT and prod.
+# The application will refuse to start if any are missing or set to dummy values.
+#
+# Railway deployment:
+#   Dashboard → your project → Variables tab → add each variable below.
+#
+# Azure deployment:
+#   App Service → Configuration → Application settings → add each variable.
+#   (Or use Key Vault references for enhanced security.)
+#
+# Required variables:
+#   STRIPE_SECRET_KEY          — sk_live_... (prod) or sk_test_... (uat)
+#   STRIPE_PUBLISHABLE_KEY     — pk_live_... (prod) or pk_test_... (uat)
+#   STRIPE_WEBHOOK_SECRET      — whsec_... from Stripe Dashboard → Webhooks
+#   STRIPE_ADVANCED_PRICE_ID   — price_... one-time Price for the "advanced" plan
+#   STRIPE_PRO_PRICE_ID        — price_... one-time Price for the "pro" plan
+#
+# Webhook endpoint to register in Stripe Dashboard:
+#   https://your-railway-url.up.railway.app/v1/subscriptions/webhooks/stripe
+#
+# Events to subscribe to:
+#   checkout.session.completed
+#   checkout.session.async_payment_succeeded
+#   checkout.session.async_payment_failed
+# ─────────────────────────────────────────────────────────────────────────────
+
+spring:
+  flyway:
+    validate-on-migrate: false
+    out-of-order: true
+  jpa:
+    hibernate:
+      ddl-auto: none
+  datasource:
+    url: ${DATABASE_URL:${SPRING_DATASOURCE_URL:jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:naplanprep_uat}}}
+    username: ${DB_USERNAME:${PGUSER:postgres}}
+    password: ${DB_PASSWORD:${PGPASSWORD:postgres}}
+    driver-class-name: org.postgresql.Driver
+    hikari:
+      maximum-pool-size: 20
+      connection-timeout: 30000
+      initialization-fail-timeout: 60000
+  data:
+    redis:
+      host: ${REDIS_HOST:${REDISHOST:localhost}}
+      port: ${REDIS_PORT:${REDISPORT:6379}}
+      password: ${REDIS_PASSWORD:${REDISPASSWORD:}}
+      timeout: 2000ms
+      connect-timeout: 3000ms
+      lettuce:
+        pool:
+          enabled: false
+
+logging:
+  level:
+    root: INFO
+    au.com.naplanprep: INFO
+
+app:
+  jwt:
+    private-key-path: ${JWT_PRIVATE_KEY_PATH:}
+    public-key-path: ${JWT_PUBLIC_KEY_PATH:}
+    access-token-expiry: 900
+    refresh-token-expiry: 604800
+  stripe:
+    # REQUIRED — no defaults. Application fails to start if any are missing.
+    secret-key: ${STRIPE_SECRET_KEY}
+    publishable-key: ${STRIPE_PUBLISHABLE_KEY}
+    webhook-secret: ${STRIPE_WEBHOOK_SECRET}
+    advanced-price-id: ${STRIPE_ADVANCED_PRICE_ID}
+    pro-price-id: ${STRIPE_PRO_PRICE_ID}
+  cors:
+    allowed-origins:
+      - https://naplanprep.com.au
+      - https://www.naplanprep.com.au
+      - https://admin.naplanprep.com.au
+      - https://uat.naplanprep.com.au
+      - https://admin.uat.naplanprep.com.au
+      - https://*.vercel.app
+      - http://localhost:5173
+      - http://localhost:5174
+  frontend-url: https://frontend-nu-topaz-20.vercel.app
+  rate-limit:
+    auth-attempts: 5
+    auth-lockout-minutes: 15

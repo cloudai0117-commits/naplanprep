@@ -114,6 +114,46 @@ public class ExamController {
             .body(ApiResponse.success(examService.startAdminExam(examId, userId)));
     }
 
+    // ─── Testlet navigation (branching exams) ─────────────────────
+
+    /**
+     * Called when the student finishes all questions in a testlet and is ready to advance.
+     * Server evaluates branching rules, updates navigation state, and returns next testlet.
+     *
+     * Response includes:
+     *   - nextTestletId (null when path is complete)
+     *   - calculatorAllowed (whether the next testlet permits calculator use)
+     *   - navigationLocked (whether the current testlet can be revisited)
+     *   - questions for the next testlet (correctAnswer/rubric stripped)
+     *   - pathComplete: true when no more testlets — client should call /submit
+     */
+    @PostMapping("/sessions/{id}/testlet/{testletId}/complete")
+    public ResponseEntity<ApiResponse<Map<String, Object>>> completeTestlet(
+        @PathVariable UUID id,
+        @PathVariable UUID testletId,
+        @AuthenticationPrincipal UserDetails principal
+    ) {
+        UUID userId = UUID.fromString(principal.getUsername());
+        return ResponseEntity.ok(ApiResponse.success(examService.completeTestlet(id, userId, testletId)));
+    }
+
+    /**
+     * Flags or unflags a question for review.
+     * The updated flaggedQuestions list is returned via GET /sessions/{id}.
+     */
+    @PutMapping("/sessions/{id}/flag/{questionId}")
+    public ResponseEntity<ApiResponse<Void>> flagQuestion(
+        @PathVariable UUID id,
+        @PathVariable UUID questionId,
+        @RequestBody Map<String, Object> body,
+        @AuthenticationPrincipal UserDetails principal
+    ) {
+        UUID userId = UUID.fromString(principal.getUsername());
+        boolean flagged = Boolean.TRUE.equals(body.get("flagged"));
+        examService.flagQuestion(id, userId, questionId, flagged);
+        return ResponseEntity.ok(ApiResponse.success(null));
+    }
+
     // ─── Results ─────────────────────────────────────────────────
 
     @GetMapping("/results/{sessionId}")

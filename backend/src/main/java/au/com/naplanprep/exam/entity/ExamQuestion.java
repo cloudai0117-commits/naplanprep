@@ -32,6 +32,20 @@ public class ExamQuestion {
     @Column(nullable = false)
     private Integer questionOrder;
 
+    /**
+     * Section this question belongs to within the exam.
+     * Null for flat exams without a section hierarchy.
+     */
+    @Column(name = "section_id")
+    private UUID sectionId;
+
+    /**
+     * Testlet this question belongs to.
+     * Null for flat exams without testlets.
+     */
+    @Column(name = "testlet_id")
+    private UUID testletId;
+
     @Embeddable
     @Getter
     @Setter

@@ -1,0 +1,21 @@
+{
+  "BATCH": "BATCH_1",
+  "Exam range": "1-160",
+  "Exams generated": 160,
+  "Flyway migrations": 160,
+  "Questions generated": 10368,
+  "Stimuli generated": 1408,
+  "Writing prompts generated": 32,
+  "Audio targets generated": 800,
+  "Validation failures": 0,
+  "Duplicate questions": 0,
+  "Duplicate stimuli": 0,
+  "Duplicate writing prompts": 0,
+  "Duplicate spelling/audio targets": 0,
+  "Flyway collisions": 0,
+  "Orphan rows": 0,
+  "Manifest status": "COMPLETE",
+  "BATCH_1_STATUS": "COMPLETE",
+  "errors": [],
+  "Semantic duplicate questions": 0
+}

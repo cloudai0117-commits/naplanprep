@@ -68,7 +68,11 @@ export default function PricingPage() {
               <div className="font-semibold text-blue-900">Current Plan: {currentSub.plan?.name}</div>
               <div className="text-blue-700 text-sm">
                 Status: {currentSub.status} ·
-                Valid until: {currentSub.currentPeriodEnd ? new Date(currentSub.currentPeriodEnd).toLocaleDateString() : '—'}
+                Valid until: {
+                  (currentSub.expiresAt ?? currentSub.currentPeriodEnd)
+                    ? new Date(currentSub.expiresAt ?? currentSub.currentPeriodEnd).toLocaleDateString()
+                    : '—'
+                }
               </div>
             </div>
           </div>
@@ -124,22 +128,24 @@ export default function PricingPage() {
                 )}
                 {plan.slug === 'advanced' && (
                   <>
-                    <li className="flex items-start"><span className="text-green-500 mr-2 mt-0.5">✓</span><strong>25 Exams</strong></li>
-                    <li className="flex items-start text-sm text-gray-500 ml-5">5 Numeracy</li>
-                    <li className="flex items-start text-sm text-gray-500 ml-5">5 Reading</li>
-                    <li className="flex items-start text-sm text-gray-500 ml-5">5 Writing</li>
-                    <li className="flex items-start text-sm text-gray-500 ml-5">5 Grammar & Punctuation</li>
-                    <li className="flex items-start text-sm text-gray-500 ml-5">5 Spelling</li>
+                    <li className="flex items-start"><span className="text-green-500 mr-2 mt-0.5">✓</span><strong>30 Exams total</strong></li>
+                    <li className="flex items-start text-sm text-gray-500 ml-5">5 FREE + 25 Advanced</li>
+                    <li className="flex items-start text-sm text-gray-500 ml-5">6 Numeracy</li>
+                    <li className="flex items-start text-sm text-gray-500 ml-5">6 Reading</li>
+                    <li className="flex items-start text-sm text-gray-500 ml-5">6 Writing</li>
+                    <li className="flex items-start text-sm text-gray-500 ml-5">6 Grammar & Punctuation</li>
+                    <li className="flex items-start text-sm text-gray-500 ml-5">6 Spelling</li>
                   </>
                 )}
                 {(plan.slug === 'pro' || plan.slug === 'premium') && (
                   <>
-                    <li className="flex items-start"><span className="text-green-500 mr-2 mt-0.5">✓</span><strong>50 Exams</strong></li>
-                    <li className="flex items-start text-sm text-gray-500 ml-5">10 Numeracy</li>
-                    <li className="flex items-start text-sm text-gray-500 ml-5">10 Reading</li>
-                    <li className="flex items-start text-sm text-gray-500 ml-5">10 Writing</li>
-                    <li className="flex items-start text-sm text-gray-500 ml-5">10 Grammar & Punctuation</li>
-                    <li className="flex items-start text-sm text-gray-500 ml-5">10 Spelling</li>
+                    <li className="flex items-start"><span className="text-green-500 mr-2 mt-0.5">✓</span><strong>80 Exams total</strong></li>
+                    <li className="flex items-start text-sm text-gray-500 ml-5">5 FREE + 25 Advanced + 50 Premium</li>
+                    <li className="flex items-start text-sm text-gray-500 ml-5">16 Numeracy</li>
+                    <li className="flex items-start text-sm text-gray-500 ml-5">16 Reading</li>
+                    <li className="flex items-start text-sm text-gray-500 ml-5">16 Writing</li>
+                    <li className="flex items-start text-sm text-gray-500 ml-5">16 Grammar & Punctuation</li>
+                    <li className="flex items-start text-sm text-gray-500 ml-5">16 Spelling</li>
                   </>
                 )}
               </ul>

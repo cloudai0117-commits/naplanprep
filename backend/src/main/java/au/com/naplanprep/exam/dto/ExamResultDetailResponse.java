@@ -26,7 +26,7 @@ public record ExamResultDetailResponse(
         UUID questionId,
         String questionText,
         String stimulusText,
-        Map<String, Object> options,
+        List<Map<String, Object>> options,
         String studentAnswer,
         String correctAnswer,
         boolean correct,

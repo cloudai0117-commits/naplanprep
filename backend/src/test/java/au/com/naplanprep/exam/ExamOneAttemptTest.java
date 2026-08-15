@@ -10,8 +10,11 @@ import au.com.naplanprep.exam.entity.Exam;
 import au.com.naplanprep.exam.entity.ExamQuestion;
 import au.com.naplanprep.exam.entity.ExamSession;
 import au.com.naplanprep.exam.entity.PackageType;
+import au.com.naplanprep.exam.entity.SessionQuestionSnapshot;
+import au.com.naplanprep.audit.service.AuditLogService;
 import au.com.naplanprep.exam.repository.*;
 import au.com.naplanprep.exam.service.ExamService;
+import au.com.naplanprep.exam.service.ExamSnapshotService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -23,6 +26,7 @@ import org.springframework.security.access.AccessDeniedException;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -41,6 +45,11 @@ class ExamOneAttemptTest {
     @Mock private ExamQuestionRepository examQuestionRepository;
     @Mock private QuestionRepository questionRepository;
     @Mock private UserRepository userRepository;
+    @Mock private SessionQuestionSnapshotRepository snapshotRepository;
+    @Mock private PracticeScoreBandRepository scoreBandRepository;
+    @Mock private TestletRepository testletRepository;
+    @Mock private ExamSnapshotService snapshotService;
+    @Mock private AuditLogService auditLogService;
 
     @InjectMocks private ExamService examService;
 
@@ -111,14 +120,31 @@ class ExamOneAttemptTest {
         savedSession.setQuestionIds(List.of(q.getId()));
         when(sessionRepository.save(any())).thenReturn(savedSession);
 
+        // buildStartResponse reads from snapshotRepository — mock it to return our question
+        SessionQuestionSnapshot snap = SessionQuestionSnapshot.builder()
+            .id(new SessionQuestionSnapshot.SessionQuestionSnapshotId(savedSession.getId(), q.getId()))
+            .questionOrder(1)
+            .snapshot(Map.of(
+                "questionId",       q.getId().toString(),
+                "questionType",     "MULTIPLE_CHOICE",
+                "questionText",     "What is 2+2?",
+                "topic",            "Arithmetic",
+                "difficultyBand",   1,
+                "calculatorAllowed", true
+            ))
+            .build();
+        when(snapshotRepository.findByIdSessionIdOrderByQuestionOrder(savedSession.getId()))
+            .thenReturn(List.of(snap));
+
         var result = examService.startAdminExam(examId, userId);
 
         assertNotNull(result);
         assertEquals(examId, result.get("examId"));
         assertEquals("Year 5 Numeracy", result.get("examTitle"));
-        List<QuestionSummary> questions = (List<QuestionSummary>) result.get("questions");
+        List<?> questions = (List<?>) result.get("questions");
         assertEquals(1, questions.size());
-        verify(sessionRepository).save(any());
+        // save() is called twice: initial persist + second persist after hasSnapshot=true
+        verify(sessionRepository, times(2)).save(any());
     }
 
     @Test

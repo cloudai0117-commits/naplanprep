@@ -93,8 +93,10 @@ class PlanUpgradeIntegrationTest {
         q.setTopic("Test Topic");
         q.setDifficultyBand(3);
         q.setQuestionText("What is 2+2?");
-        q.setOptions(Map.of("options", List.of("3", "4", "5", "6")));
-        q.setCorrectAnswer(Map.of("value", "4"));
+        q.setOptions(List.of(
+            Map.of("text","3","label","A"), Map.of("text","4","label","B"),
+            Map.of("text","5","label","C"), Map.of("text","6","label","D")));
+        q.setCorrectAnswer(Map.of("value", "B"));
         q.setStatus(Question.QuestionStatus.PUBLISHED);
         q = questionRepository.save(q);
 

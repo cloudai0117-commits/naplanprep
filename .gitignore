@@ -31,12 +31,16 @@ admin-panel/dist/
 backend/.env
 backend/.env.development
 backend/.env.production
+backend/.env.test
+backend/.env.uat
 frontend/.env.local
 frontend/.env.development
 frontend/.env.production
+frontend/.env.uat
 admin-panel/.env.local
 admin-panel/.env.development
 admin-panel/.env.production
+admin-panel/.env.uat
 
 # IDE
 .idea/

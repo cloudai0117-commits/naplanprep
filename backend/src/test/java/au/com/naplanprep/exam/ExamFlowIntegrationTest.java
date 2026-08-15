@@ -69,8 +69,13 @@ class ExamFlowIntegrationTest {
         question.setYearLevel(5);
         question.setDifficultyBand(1);
         question.setStatus(Question.QuestionStatus.PUBLISHED);
-        question.setOptions(Map.of("options", java.util.List.of("10", "11", "12", "13")));
-        question.setCorrectAnswer(Map.of("value", "12"));
+        question.setOptions(java.util.List.of(
+            Map.of("text", "10", "label", "A"),
+            Map.of("text", "11", "label", "B"),
+            Map.of("text", "12", "label", "C"),
+            Map.of("text", "13", "label", "D")
+        ));
+        question.setCorrectAnswer(Map.of("value", "C"));
         question = questionRepository.save(question);
 
         exam = new Exam();
@@ -105,7 +110,7 @@ class ExamFlowIntegrationTest {
         assertEquals(ExamSession.SessionStatus.IN_PROGRESS, session.getStatus());
         assertEquals(exam.getId(), session.getExamId());
 
-        examService.submitAnswer(sessionId, userId, question.getId(), Map.of("value", "12"), false, null);
+        examService.submitAnswer(sessionId, userId, question.getId(), Map.of("value", "C"), false, null);
 
         ExamResultDetailResponse result = examService.submitExam(sessionId, userId);
 

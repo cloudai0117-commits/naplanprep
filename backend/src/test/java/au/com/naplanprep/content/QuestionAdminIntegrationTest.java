@@ -59,9 +59,11 @@ class QuestionAdminIntegrationTest {
             Question.QuestionType.MULTIPLE_CHOICE, year, domain, topic, 3,
             null, null,
             null, "Test question text?",
-            Map.of("options", List.of("A", "B", "C", "D")),
+            List.of(Map.of("text","A","label","A"), Map.of("text","B","label","B"),
+                    Map.of("text","C","label","C"), Map.of("text","D","label","D")),
             Map.of("value", "A"),
-            "A is correct."
+            "A is correct.",
+            null  // calculatorAllowed — null means use entity default (true)
         );
     }
 
@@ -157,5 +159,75 @@ class QuestionAdminIntegrationTest {
         Page<Question> published = contentService.searchQuestions(
             null, null, null, null, Question.QuestionStatus.PUBLISHED, null, Pageable.ofSize(200));
         assertFalse(published.getContent().stream().anyMatch(r -> r.getId().equals(q.getId())));
+    }
+
+    // ── Calculator allowed field ──────────────────────────────────────────────
+
+    private QuestionRequest calculatorReq(int year, String topic, int band, Boolean calculatorAllowed) {
+        return new QuestionRequest(
+            Question.QuestionType.MULTIPLE_CHOICE, year, Question.Domain.NUMERACY, topic, band,
+            null, null, null, "Q " + topic + " band" + band,
+            List.of(Map.of("text","A","label","A"), Map.of("text","B","label","B"),
+                    Map.of("text","C","label","C"), Map.of("text","D","label","D")),
+            Map.of("value","A"),
+            "Explanation.", calculatorAllowed);
+    }
+
+    @Test
+    void createdQuestion_withNullCalculatorAllowed_defaultsToTrue() {
+        Question q = contentService.createQuestion(req(7, Question.Domain.NUMERACY, "Multiplication"), creatorId);
+        assertTrue(q.getCalculatorAllowed(), "null in request must use entity default = TRUE");
+    }
+
+    @Test
+    void createdQuestion_withExplicitFalse_persists() {
+        Question q = contentService.createQuestion(calculatorReq(3, "Addition", 3, false), creatorId);
+        assertFalse(q.getCalculatorAllowed(), "explicit FALSE must persist to DB");
+    }
+
+    @Test
+    void createdQuestion_withExplicitTrue_persists() {
+        Question q = contentService.createQuestion(calculatorReq(7, "Algebra", 6, true), creatorId);
+        assertTrue(q.getCalculatorAllowed(), "explicit TRUE must persist to DB");
+    }
+
+    @Test
+    void updateQuestion_canToggleCalculatorAllowed() {
+        Question q = contentService.createQuestion(calculatorReq(7, "Statistics", 5, false), creatorId);
+        assertFalse(q.getCalculatorAllowed());
+
+        QuestionRequest update = new QuestionRequest(
+            Question.QuestionType.MULTIPLE_CHOICE, 7, Question.Domain.NUMERACY, "Statistics", 5,
+            null, null, null, "Q Statistics band5",
+            List.of(Map.of("text","A","label","A"), Map.of("text","B","label","B"),
+                    Map.of("text","C","label","C"), Map.of("text","D","label","D")),
+            Map.of("value","A"),
+            "Explanation.", true);
+        Question updated = contentService.updateQuestion(q.getId(), update);
+        assertTrue(updated.getCalculatorAllowed(), "update to TRUE must persist");
+    }
+
+    @Test
+    void y7NumeracyAStage_q1to8_nonCalculator_q9to16_calculator() {
+        for (int i = 1; i <= 8; i++) {
+            Question q = contentService.createQuestion(calculatorReq(7, "Number", i, false), creatorId);
+            assertFalse(q.getCalculatorAllowed(), "Y7 A-stage Q" + i + " must be non-calculator");
+        }
+        for (int i = 9; i <= 16; i++) {
+            Question q = contentService.createQuestion(calculatorReq(7, "Number", i, true), creatorId);
+            assertTrue(q.getCalculatorAllowed(), "Y7 A-stage Q" + i + " must be calculator-allowed");
+        }
+    }
+
+    @Test
+    void y9NumeracyAStage_q1to8_nonCalculator_q9to16_calculator() {
+        for (int i = 1; i <= 8; i++) {
+            Question q = contentService.createQuestion(calculatorReq(9, "Algebra", i, false), creatorId);
+            assertFalse(q.getCalculatorAllowed(), "Y9 A-stage Q" + i + " must be non-calculator");
+        }
+        for (int i = 9; i <= 16; i++) {
+            Question q = contentService.createQuestion(calculatorReq(9, "Algebra", i, true), creatorId);
+            assertTrue(q.getCalculatorAllowed(), "Y9 A-stage Q" + i + " must be calculator-allowed");
+        }
     }
 }

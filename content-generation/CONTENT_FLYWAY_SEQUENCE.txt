@@ -1,0 +1,357 @@
+﻿CONTENT FLYWAY MIGRATION SEQUENCE
+Generated: 2026-08-14
+Audit: NAPLANPrep Production QA Audit
+================================================================================
+
+BATCH 1 DIRECTORY: NAPLANPrep_Batch1_V54_V214\flyway\
+BATCH 2 DIRECTORY: NAPLANPrep_MasterBatch2_V215_V374\
+
+NOTE: Batch 1 files use DOWNLOAD version numbers in filenames.
+      Repo version = Download version + 1 for files V57+ (due to V57 DDL shift).
+      Backend V57__add_question_calculator_flag.sql occupies Repo slot V57.
+
+--------------------------------------------------------------------------------
+SEQ  REPO_V  DOWNLOAD_FILE                                      BATCH  STATUS
+--------------------------------------------------------------------------------
+1    V54     V54__seed_y3_num_*.sql                             B1     OK (CANONICAL)
+2    V55     V55__seed_y3_num_*.sql                             B1     OK (CANONICAL)
+3    V56     V56__seed_y3_num_*.sql                             B1     OK (CANONICAL)
+
+[V57 = DDL migration V57__add_question_calculator_flag.sql — in backend repo, NOT in content batch]
+
+4    V58     V57__seed_y3_num_advanced_exam03.sql               B1     P0:calc_missing
+5    V59     V58__seed_y3_num_advanced_exam04.sql               B1     P0:calc_missing
+6    V60     V59__seed_y3_num_advanced_exam05.sql               B1     P0:calc_missing
+7    V61     V60__seed_y3_num_premium_exam01.sql                B1     P0:calc_missing
+8    V62     V61__seed_y3_num_premium_exam02.sql                B1     P0:calc_missing
+9    V63     V62__seed_y3_num_premium_exam03.sql                B1     P0:calc_missing
+10   V64     V63__seed_y3_num_premium_exam04.sql                B1     P0:calc_missing
+11   V65     V64__seed_y3_num_premium_exam05.sql                B1     P0:calc_missing
+12   V66     V65__seed_y3_num_premium_exam06.sql                B1     P0:calc_missing
+13   V67     V66__seed_y3_num_premium_exam07.sql                B1     P0:calc_missing
+14   V68     V67__seed_y3_num_premium_exam08.sql                B1     P0:calc_missing
+15   V69     V68__seed_y3_num_premium_exam09.sql                B1     P0:calc_missing
+16   V70     V69__seed_y3_num_premium_exam10.sql                B1     P0:calc_missing
+17   V71     V70__seed_y3_read_free_exam01.sql                  B1     OK
+18   V72     V71__seed_y3_read_advanced_exam01.sql              B1     OK
+19   V73     V72__seed_y3_read_advanced_exam02.sql              B1     OK
+20   V74     V73__seed_y3_read_advanced_exam03.sql              B1     OK
+21   V75     V74__seed_y3_read_advanced_exam04.sql              B1     OK
+22   V76     V75__seed_y3_read_advanced_exam05.sql              B1     OK
+23   V77     V76__seed_y3_read_premium_exam01.sql               B1     OK
+24   V78     V77__seed_y3_read_premium_exam02.sql               B1     OK
+25   V79     V78__seed_y3_read_premium_exam03.sql               B1     OK
+26   V80     V79__seed_y3_read_premium_exam04.sql               B1     OK
+27   V81     V80__seed_y3_read_premium_exam05.sql               B1     OK
+28   V82     V81__seed_y3_read_premium_exam06.sql               B1     OK
+29   V83     V82__seed_y3_read_premium_exam07.sql               B1     OK
+30   V84     V83__seed_y3_read_premium_exam08.sql               B1     OK
+31   V85     V84__seed_y3_read_premium_exam09.sql               B1     OK
+32   V86     V85__seed_y3_read_premium_exam10.sql               B1     OK
+33   V87     V86__seed_y3_writ_free_exam01.sql                  B1     OK
+34   V88     V87__seed_y3_writ_advanced_exam01.sql              B1     OK
+35   V89     V88__seed_y3_writ_advanced_exam02.sql              B1     OK
+36   V90     V89__seed_y3_writ_advanced_exam03.sql              B1     OK
+37   V91     V90__seed_y3_writ_advanced_exam04.sql              B1     OK
+38   V92     V91__seed_y3_writ_advanced_exam05.sql              B1     OK
+39   V93     V92__seed_y3_writ_premium_exam01.sql               B1     OK
+40   V94     V93__seed_y3_writ_premium_exam02.sql               B1     OK
+41   V95     V94__seed_y3_writ_premium_exam03.sql               B1     OK
+42   V96     V95__seed_y3_writ_premium_exam04.sql               B1     OK
+43   V97     V96__seed_y3_writ_premium_exam05.sql               B1     OK
+44   V98     V97__seed_y3_writ_premium_exam06.sql               B1     OK
+45   V99     V98__seed_y3_writ_premium_exam07.sql               B1     OK
+46   V100    V99__seed_y3_writ_premium_exam08.sql               B1     OK
+47   V101    V100__seed_y3_writ_premium_exam09.sql              B1     OK
+48   V102    V101__seed_y3_writ_premium_exam10.sql              B1     OK
+49   V103    V102__seed_y3_gp_free_exam01.sql                   B1     OK
+50   V104    V103__seed_y3_gp_advanced_exam01.sql               B1     OK
+51   V105    V104__seed_y3_gp_advanced_exam02.sql               B1     OK
+52   V106    V105__seed_y3_gp_advanced_exam03.sql               B1     OK
+53   V107    V106__seed_y3_gp_advanced_exam04.sql               B1     OK
+54   V108    V107__seed_y3_gp_advanced_exam05.sql               B1     OK
+55   V109    V108__seed_y3_gp_premium_exam01.sql                B1     OK
+56   V110    V109__seed_y3_gp_premium_exam02.sql                B1     OK
+57   V111    V110__seed_y3_gp_premium_exam03.sql                B1     OK
+58   V112    V111__seed_y3_gp_premium_exam04.sql                B1     OK
+59   V113    V112__seed_y3_gp_premium_exam05.sql                B1     OK
+60   V114    V113__seed_y3_gp_premium_exam06.sql                B1     OK
+61   V115    V114__seed_y3_gp_premium_exam07.sql                B1     OK
+62   V116    V115__seed_y3_gp_premium_exam08.sql                B1     OK
+63   V117    V116__seed_y3_gp_premium_exam09.sql                B1     OK
+64   V118    V117__seed_y3_gp_premium_exam10.sql                B1     OK
+65   V119    V118__seed_y3_spell_free_exam01.sql                B1     P1:testlet_names_ns
+66   V120    V119__seed_y3_spell_advanced_exam01.sql            B1     P1:testlet_names_ns
+67   V121    V120__seed_y3_spell_advanced_exam02.sql            B1     P1:testlet_names_ns
+68   V122    V121__seed_y3_spell_advanced_exam03.sql            B1     P1:testlet_names_ns
+69   V123    V122__seed_y3_spell_advanced_exam04.sql            B1     P1:testlet_names_ns
+70   V124    V123__seed_y3_spell_advanced_exam05.sql            B1     P1:testlet_names_ns
+71   V125    V124__seed_y3_spell_premium_exam01.sql             B1     P1:testlet_names_ns
+72   V126    V125__seed_y3_spell_premium_exam02.sql             B1     P1:testlet_names_ns
+73   V127    V126__seed_y3_spell_premium_exam03.sql             B1     P1:testlet_names_ns
+74   V128    V127__seed_y3_spell_premium_exam04.sql             B1     P1:testlet_names_ns
+75   V129    V128__seed_y3_spell_premium_exam05.sql             B1     P1:testlet_names_ns
+76   V130    V129__seed_y3_spell_premium_exam06.sql             B1     P1:testlet_names_ns
+77   V131    V130__seed_y3_spell_premium_exam07.sql             B1     P1:testlet_names_ns
+78   V132    V131__seed_y3_spell_premium_exam08.sql             B1     P1:testlet_names_ns
+79   V133    V132__seed_y3_spell_premium_exam09.sql             B1     P1:testlet_names_ns
+80   V134    V133__seed_y3_spell_premium_exam10.sql             B1     P1:testlet_names_ns
+81   V135    V134__seed_y5_num_free_exam01.sql                  B1     P0:calc_missing
+82   V136    V135__seed_y5_num_advanced_exam01.sql              B1     P0:calc_missing
+83   V137    V136__seed_y5_num_advanced_exam02.sql              B1     P0:calc_missing
+84   V138    V137__seed_y5_num_advanced_exam03.sql              B1     P0:calc_missing
+85   V139    V138__seed_y5_num_advanced_exam04.sql              B1     P0:calc_missing
+86   V140    V139__seed_y5_num_advanced_exam05.sql              B1     P0:calc_missing
+87   V141    V140__seed_y5_num_premium_exam01.sql               B1     P0:calc_missing
+88   V142    V141__seed_y5_num_premium_exam02.sql               B1     P0:calc_missing
+89   V143    V142__seed_y5_num_premium_exam03.sql               B1     P0:calc_missing
+90   V144    V143__seed_y5_num_premium_exam04.sql               B1     P0:calc_missing
+91   V145    V144__seed_y5_num_premium_exam05.sql               B1     P0:calc_missing
+92   V146    V145__seed_y5_num_premium_exam06.sql               B1     P0:calc_missing
+93   V147    V146__seed_y5_num_premium_exam07.sql               B1     P0:calc_missing
+94   V148    V147__seed_y5_num_premium_exam08.sql               B1     P0:calc_missing
+95   V149    V148__seed_y5_num_premium_exam09.sql               B1     P0:calc_missing
+96   V150    V149__seed_y5_num_premium_exam10.sql               B1     P0:calc_missing
+97   V151    V150__seed_y5_read_free_exam01.sql                 B1     OK
+98   V152    V151__seed_y5_read_advanced_exam01.sql             B1     OK
+99   V153    V152__seed_y5_read_advanced_exam02.sql             B1     OK
+100  V154    V153__seed_y5_read_advanced_exam03.sql             B1     OK
+101  V155    V154__seed_y5_read_advanced_exam04.sql             B1     OK
+102  V156    V155__seed_y5_read_advanced_exam05.sql             B1     OK
+103  V157    V156__seed_y5_read_premium_exam01.sql              B1     OK
+104  V158    V157__seed_y5_read_premium_exam02.sql              B1     OK
+105  V159    V158__seed_y5_read_premium_exam03.sql              B1     OK
+106  V160    V159__seed_y5_read_premium_exam04.sql              B1     OK
+107  V161    V160__seed_y5_read_premium_exam05.sql              B1     OK
+108  V162    V161__seed_y5_read_premium_exam06.sql              B1     OK
+109  V163    V162__seed_y5_read_premium_exam07.sql              B1     OK
+110  V164    V163__seed_y5_read_premium_exam08.sql              B1     OK
+111  V165    V164__seed_y5_read_premium_exam09.sql              B1     OK
+112  V166    V165__seed_y5_read_premium_exam10.sql              B1     OK
+113  V167    V166__seed_y5_writ_free_exam01.sql                 B1     OK
+114  V168    V167__seed_y5_writ_advanced_exam01.sql             B1     OK
+115  V169    V168__seed_y5_writ_advanced_exam02.sql             B1     OK
+116  V170    V169__seed_y5_writ_advanced_exam03.sql             B1     OK
+117  V171    V170__seed_y5_writ_advanced_exam04.sql             B1     OK
+118  V172    V171__seed_y5_writ_advanced_exam05.sql             B1     OK
+119  V173    V172__seed_y5_writ_premium_exam01.sql              B1     OK
+120  V174    V173__seed_y5_writ_premium_exam02.sql              B1     OK
+121  V175    V174__seed_y5_writ_premium_exam03.sql              B1     OK
+122  V176    V175__seed_y5_writ_premium_exam04.sql              B1     OK
+123  V177    V176__seed_y5_writ_premium_exam05.sql              B1     OK
+124  V178    V177__seed_y5_writ_premium_exam06.sql              B1     OK
+125  V179    V178__seed_y5_writ_premium_exam07.sql              B1     OK
+126  V180    V179__seed_y5_writ_premium_exam08.sql              B1     OK
+127  V181    V180__seed_y5_writ_premium_exam09.sql              B1     OK
+128  V182    V181__seed_y5_writ_premium_exam10.sql              B1     OK
+129  V183    V182__seed_y5_gp_free_exam01.sql                   B1     OK
+130  V184    V183__seed_y5_gp_advanced_exam01.sql               B1     OK
+131  V185    V184__seed_y5_gp_advanced_exam02.sql               B1     OK
+132  V186    V185__seed_y5_gp_advanced_exam03.sql               B1     OK
+133  V187    V186__seed_y5_gp_advanced_exam04.sql               B1     OK
+134  V188    V187__seed_y5_gp_advanced_exam05.sql               B1     OK
+135  V189    V188__seed_y5_gp_premium_exam01.sql                B1     OK
+136  V190    V189__seed_y5_gp_premium_exam02.sql                B1     OK
+137  V191    V190__seed_y5_gp_premium_exam03.sql                B1     OK
+138  V192    V191__seed_y5_gp_premium_exam04.sql                B1     OK
+139  V193    V192__seed_y5_gp_premium_exam05.sql                B1     OK
+140  V194    V193__seed_y5_gp_premium_exam06.sql                B1     OK
+141  V195    V194__seed_y5_gp_premium_exam07.sql                B1     OK
+142  V196    V195__seed_y5_gp_premium_exam08.sql                B1     OK
+143  V197    V196__seed_y5_gp_premium_exam09.sql                B1     OK
+144  V198    V197__seed_y5_gp_premium_exam10.sql                B1     OK
+145  V199    V198__seed_y5_spell_free_exam01.sql                B1     P1:testlet_names_ns
+146  V200    V199__seed_y5_spell_advanced_exam01.sql            B1     P1:testlet_names_ns
+147  V201    V200__seed_y5_spell_advanced_exam02.sql            B1     P1:testlet_names_ns
+148  V202    V201__seed_y5_spell_advanced_exam03.sql            B1     P1:testlet_names_ns
+149  V203    V202__seed_y5_spell_advanced_exam04.sql            B1     P1:testlet_names_ns
+150  V204    V203__seed_y5_spell_advanced_exam05.sql            B1     P1:testlet_names_ns
+151  V205    V204__seed_y5_spell_premium_exam01.sql             B1     P1:testlet_names_ns
+152  V206    V205__seed_y5_spell_premium_exam02.sql             B1     P1:testlet_names_ns
+153  V207    V206__seed_y5_spell_premium_exam03.sql             B1     P1:testlet_names_ns
+154  V208    V207__seed_y5_spell_premium_exam04.sql             B1     P1:testlet_names_ns
+155  V209    V208__seed_y5_spell_premium_exam05.sql             B1     P1:testlet_names_ns
+156  V210    V209__seed_y5_spell_premium_exam06.sql             B1     P1:testlet_names_ns
+157  V211    V210__seed_y5_spell_premium_exam07.sql             B1     P1:testlet_names_ns
+158  V212    V211__seed_y5_spell_premium_exam08.sql             B1     P1:testlet_names_ns
+159  V213    V212__seed_y5_spell_premium_exam09.sql             B1     P1:testlet_names_ns
+160  V214    V213__seed_y5_spell_premium_exam10.sql             B1     P1:testlet_names_ns
+
+--- BATCH 1 / BATCH 2 BOUNDARY ---
+
+161  V215    V215__seed_y7_num_free_exam01.sql                  B2     P0:Choice4
+162  V216    V216__seed_y7_num_advanced_exam01.sql              B2     P0:Choice4
+163  V217    V217__seed_y7_num_advanced_exam02.sql              B2     P0:Choice4
+164  V218    V218__seed_y7_num_advanced_exam03.sql              B2     P0:Choice4
+165  V219    V219__seed_y7_num_advanced_exam04.sql              B2     P0:Choice4
+166  V220    V220__seed_y7_num_advanced_exam05.sql              B2     P0:Choice4
+167  V221    V221__seed_y7_num_premium_exam01.sql               B2     P0:Choice4
+168  V222    V222__seed_y7_num_premium_exam02.sql               B2     P0:Choice4
+169  V223    V223__seed_y7_num_premium_exam03.sql               B2     P0:Choice4
+170  V224    V224__seed_y7_num_premium_exam04.sql               B2     P0:Choice4
+171  V225    V225__seed_y7_num_premium_exam05.sql               B2     P0:Choice4
+172  V226    V226__seed_y7_num_premium_exam06.sql               B2     P0:Choice4
+173  V227    V227__seed_y7_num_premium_exam07.sql               B2     P0:Choice4
+174  V228    V228__seed_y7_num_premium_exam08.sql               B2     P0:Choice4
+175  V229    V229__seed_y7_num_premium_exam09.sql               B2     P0:Choice4
+176  V230    V230__seed_y7_num_premium_exam10.sql               B2     P0:Choice4
+177  V231    V231__seed_y7_read_free_exam01.sql                 B2     OK
+178  V232    V232__seed_y7_read_advanced_exam01.sql             B2     OK
+179  V233    V233__seed_y7_read_advanced_exam02.sql             B2     OK
+180  V234    V234__seed_y7_read_advanced_exam03.sql             B2     OK
+181  V235    V235__seed_y7_read_advanced_exam04.sql             B2     OK
+182  V236    V236__seed_y7_read_advanced_exam05.sql             B2     OK
+183  V237    V237__seed_y7_read_premium_exam01.sql              B2     OK
+184  V238    V238__seed_y7_read_premium_exam02.sql              B2     OK
+185  V239    V239__seed_y7_read_premium_exam03.sql              B2     OK
+186  V240    V240__seed_y7_read_premium_exam04.sql              B2     OK
+187  V241    V241__seed_y7_read_premium_exam05.sql              B2     OK
+188  V242    V242__seed_y7_read_premium_exam06.sql              B2     OK
+189  V243    V243__seed_y7_read_premium_exam07.sql              B2     OK
+190  V244    V244__seed_y7_read_premium_exam08.sql              B2     OK
+191  V245    V245__seed_y7_read_premium_exam09.sql              B2     OK
+192  V246    V246__seed_y7_read_premium_exam10.sql              B2     OK
+193  V247    V247__seed_y7_writ_free_exam01.sql                 B2     OK
+194  V248    V248__seed_y7_writ_advanced_exam01.sql             B2     OK
+195  V249    V249__seed_y7_writ_advanced_exam02.sql             B2     OK
+196  V250    V250__seed_y7_writ_advanced_exam03.sql             B2     OK
+197  V251    V251__seed_y7_writ_advanced_exam04.sql             B2     OK
+198  V252    V252__seed_y7_writ_advanced_exam05.sql             B2     OK
+199  V253    V253__seed_y7_writ_premium_exam01.sql              B2     OK
+200  V254    V254__seed_y7_writ_premium_exam02.sql              B2     OK
+201  V255    V255__seed_y7_writ_premium_exam03.sql              B2     OK
+202  V256    V256__seed_y7_writ_premium_exam04.sql              B2     OK
+203  V257    V257__seed_y7_writ_premium_exam05.sql              B2     OK
+204  V258    V258__seed_y7_writ_premium_exam06.sql              B2     OK
+205  V259    V259__seed_y7_writ_premium_exam07.sql              B2     OK
+206  V260    V260__seed_y7_writ_premium_exam08.sql              B2     OK
+207  V261    V261__seed_y7_writ_premium_exam09.sql              B2     OK
+208  V262    V262__seed_y7_writ_premium_exam10.sql              B2     OK
+209  V263    V263__seed_y7_gp_free_exam01.sql                   B2     P0:Choice4
+210  V264    V264__seed_y7_gp_advanced_exam01.sql               B2     P0:Choice4
+211  V265    V265__seed_y7_gp_advanced_exam02.sql               B2     P0:Choice4
+212  V266    V266__seed_y7_gp_advanced_exam03.sql               B2     P0:Choice4
+213  V267    V267__seed_y7_gp_advanced_exam04.sql               B2     P0:Choice4
+214  V268    V268__seed_y7_gp_advanced_exam05.sql               B2     P0:Choice4
+215  V269    V269__seed_y7_gp_premium_exam01.sql                B2     P0:Choice4
+216  V270    V270__seed_y7_gp_premium_exam02.sql                B2     P0:Choice4
+217  V271    V271__seed_y7_gp_premium_exam03.sql                B2     P0:Choice4
+218  V272    V272__seed_y7_gp_premium_exam04.sql                B2     P0:Choice4
+219  V273    V273__seed_y7_gp_premium_exam05.sql                B2     P0:Choice4
+220  V274    V274__seed_y7_gp_premium_exam06.sql                B2     P0:Choice4
+221  V275    V275__seed_y7_gp_premium_exam07.sql                B2     P0:Choice4
+222  V276    V276__seed_y7_gp_premium_exam08.sql                B2     P0:Choice4
+223  V277    V277__seed_y7_gp_premium_exam09.sql                B2     P0:Choice4
+224  V278    V278__seed_y7_gp_premium_exam10.sql                B2     P0:Choice4
+225  V279    V279__seed_y7_spell_free_exam01.sql                B2     OK
+226  V280    V280__seed_y7_spell_advanced_exam01.sql            B2     OK
+227  V281    V281__seed_y7_spell_advanced_exam02.sql            B2     OK
+228  V282    V282__seed_y7_spell_advanced_exam03.sql            B2     OK
+229  V283    V283__seed_y7_spell_advanced_exam04.sql            B2     OK
+230  V284    V284__seed_y7_spell_advanced_exam05.sql            B2     OK
+231  V285    V285__seed_y7_spell_premium_exam01.sql             B2     OK
+232  V286    V286__seed_y7_spell_premium_exam02.sql             B2     OK
+233  V287    V287__seed_y7_spell_premium_exam03.sql             B2     OK
+234  V288    V288__seed_y7_spell_premium_exam04.sql             B2     OK
+235  V289    V289__seed_y7_spell_premium_exam05.sql             B2     OK
+236  V290    V290__seed_y7_spell_premium_exam06.sql             B2     OK
+237  V291    V291__seed_y7_spell_premium_exam07.sql             B2     OK
+238  V292    V292__seed_y7_spell_premium_exam08.sql             B2     OK
+239  V293    V293__seed_y7_spell_premium_exam09.sql             B2     OK
+240  V294    V294__seed_y7_spell_premium_exam10.sql             B2     OK
+241  V295    V295__seed_y9_num_free_exam01.sql                  B2     P0:Choice4
+242  V296    V296__seed_y9_num_advanced_exam01.sql              B2     P0:Choice4
+243  V297    V297__seed_y9_num_advanced_exam02.sql              B2     P0:Choice4
+244  V298    V298__seed_y9_num_advanced_exam03.sql              B2     P0:Choice4
+245  V299    V299__seed_y9_num_advanced_exam04.sql              B2     P0:Choice4
+246  V300    V300__seed_y9_num_advanced_exam05.sql              B2     P0:Choice4
+247  V301    V301__seed_y9_num_premium_exam01.sql               B2     P0:Choice4
+248  V302    V302__seed_y9_num_premium_exam02.sql               B2     P0:Choice4
+249  V303    V303__seed_y9_num_premium_exam03.sql               B2     P0:Choice4
+250  V304    V304__seed_y9_num_premium_exam04.sql               B2     P0:Choice4
+251  V305    V305__seed_y9_num_premium_exam05.sql               B2     P0:Choice4
+252  V306    V306__seed_y9_num_premium_exam06.sql               B2     P0:Choice4
+253  V307    V307__seed_y9_num_premium_exam07.sql               B2     P0:Choice4
+254  V308    V308__seed_y9_num_premium_exam08.sql               B2     P0:Choice4
+255  V309    V309__seed_y9_num_premium_exam09.sql               B2     P0:Choice4
+256  V310    V310__seed_y9_num_premium_exam10.sql               B2     P0:Choice4
+257  V311    V311__seed_y9_read_free_exam01.sql                 B2     OK
+258  V312    V312__seed_y9_read_advanced_exam01.sql             B2     OK
+259  V313    V313__seed_y9_read_advanced_exam02.sql             B2     OK
+260  V314    V314__seed_y9_read_advanced_exam03.sql             B2     OK
+261  V315    V315__seed_y9_read_advanced_exam04.sql             B2     OK
+262  V316    V316__seed_y9_read_advanced_exam05.sql             B2     OK
+263  V317    V317__seed_y9_read_premium_exam01.sql              B2     OK
+264  V318    V318__seed_y9_read_premium_exam02.sql              B2     OK
+265  V319    V319__seed_y9_read_premium_exam03.sql              B2     OK
+266  V320    V320__seed_y9_read_premium_exam04.sql              B2     OK
+267  V321    V321__seed_y9_read_premium_exam05.sql              B2     OK
+268  V322    V322__seed_y9_read_premium_exam06.sql              B2     OK
+269  V323    V323__seed_y9_read_premium_exam07.sql              B2     OK
+270  V324    V324__seed_y9_read_premium_exam08.sql              B2     OK
+271  V325    V325__seed_y9_read_premium_exam09.sql              B2     OK
+272  V326    V326__seed_y9_read_premium_exam10.sql              B2     OK
+273  V327    V327__seed_y9_writ_free_exam01.sql                 B2     OK
+274  V328    V328__seed_y9_writ_advanced_exam01.sql             B2     OK
+275  V329    V329__seed_y9_writ_advanced_exam02.sql             B2     OK
+276  V330    V330__seed_y9_writ_advanced_exam03.sql             B2     OK
+277  V331    V331__seed_y9_writ_advanced_exam04.sql             B2     OK
+278  V332    V332__seed_y9_writ_advanced_exam05.sql             B2     OK
+279  V333    V333__seed_y9_writ_premium_exam01.sql              B2     OK
+280  V334    V334__seed_y9_writ_premium_exam02.sql              B2     OK
+281  V335    V335__seed_y9_writ_premium_exam03.sql              B2     OK
+282  V336    V336__seed_y9_writ_premium_exam04.sql              B2     OK
+283  V337    V337__seed_y9_writ_premium_exam05.sql              B2     OK
+284  V338    V338__seed_y9_writ_premium_exam06.sql              B2     OK
+285  V339    V339__seed_y9_writ_premium_exam07.sql              B2     OK
+286  V340    V340__seed_y9_writ_premium_exam08.sql              B2     OK
+287  V341    V341__seed_y9_writ_premium_exam09.sql              B2     OK
+288  V342    V342__seed_y9_writ_premium_exam10.sql              B2     OK
+289  V343    V343__seed_y9_gp_free_exam01.sql                   B2     P0:Choice4
+290  V344    V344__seed_y9_gp_advanced_exam01.sql               B2     P0:Choice4
+291  V345    V345__seed_y9_gp_advanced_exam02.sql               B2     P0:Choice4
+292  V346    V346__seed_y9_gp_advanced_exam03.sql               B2     P0:Choice4
+293  V347    V347__seed_y9_gp_advanced_exam04.sql               B2     P0:Choice4
+294  V348    V348__seed_y9_gp_advanced_exam05.sql               B2     P0:Choice4
+295  V349    V349__seed_y9_gp_premium_exam01.sql                B2     P0:Choice4
+296  V350    V350__seed_y9_gp_premium_exam02.sql                B2     P0:Choice4
+297  V351    V351__seed_y9_gp_premium_exam03.sql                B2     P0:Choice4
+298  V352    V352__seed_y9_gp_premium_exam04.sql                B2     P0:Choice4
+299  V353    V353__seed_y9_gp_premium_exam05.sql                B2     P0:Choice4
+300  V354    V354__seed_y9_gp_premium_exam06.sql                B2     P0:Choice4
+301  V355    V355__seed_y9_gp_premium_exam07.sql                B2     P0:Choice4
+302  V356    V356__seed_y9_gp_premium_exam08.sql                B2     P0:Choice4
+303  V357    V357__seed_y9_gp_premium_exam09.sql                B2     P0:Choice4
+304  V358    V358__seed_y9_gp_premium_exam10.sql                B2     P0:Choice4
+305  V359    V359__seed_y9_spell_free_exam01.sql                B2     OK
+306  V360    V360__seed_y9_spell_advanced_exam01.sql            B2     OK
+307  V361    V361__seed_y9_spell_advanced_exam02.sql            B2     OK
+308  V362    V362__seed_y9_spell_advanced_exam03.sql            B2     OK
+309  V363    V363__seed_y9_spell_advanced_exam04.sql            B2     OK
+310  V364    V364__seed_y9_spell_advanced_exam05.sql            B2     OK
+311  V365    V365__seed_y9_spell_premium_exam01.sql             B2     OK
+312  V366    V366__seed_y9_spell_premium_exam02.sql             B2     OK
+313  V367    V367__seed_y9_spell_premium_exam03.sql             B2     OK
+314  V368    V368__seed_y9_spell_premium_exam04.sql             B2     OK
+315  V369    V369__seed_y9_spell_premium_exam05.sql             B2     OK
+316  V370    V370__seed_y9_spell_premium_exam06.sql             B2     OK
+317  V371    V371__seed_y9_spell_premium_exam07.sql             B2     OK
+318  V372    V372__seed_y9_spell_premium_exam08.sql             B2     OK
+319  V373    V373__seed_y9_spell_premium_exam09.sql             B2     OK
+320  V374    V374__seed_y9_spell_premium_exam10.sql             B2     OK
+
+--------------------------------------------------------------------------------
+*** EXTRA / ROGUE FILE — NOT IN SEQUENCE ABOVE ***
+--------------------------------------------------------------------------------
+EXTRA V215!   V214__seed_y5_spell_premium_exam10.sql             B1     P0:COLLISION V215 already taken by Batch2
+
+SUMMARY
+  Batch 1 canonical files:   3   (V54, V55, V56)
+  Batch 1 shifted files:   157   (Download V57-V213 = Repo V58-V214)
+  Batch 2 files:           160   (V215-V374)
+  EXTRA/rogue file:          1   (V214 content duplicate = Repo V215 COLLISION)
+  Total files on disk:     321
+  Expected canonical:      320
+  DISCREPANCY:               1   (extra file)
+
+FLYWAY EXECUTION VERDICT: FAIL — Version collision at V215 prevents clean migration run

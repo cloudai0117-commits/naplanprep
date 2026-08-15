@@ -30,6 +30,8 @@ public class AppProperties {
         private String secretKey;
         private String webhookSecret;
         private String publishableKey;
+        private String advancedPriceId;
+        private String proPriceId;
     }
 
     @Data

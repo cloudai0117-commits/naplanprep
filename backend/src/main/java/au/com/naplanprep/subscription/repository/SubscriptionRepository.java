@@ -21,6 +21,9 @@ public interface SubscriptionRepository extends JpaRepository<Subscription, UUID
     List<Subscription> findAllByUserIdAndStatusIn(UUID userId, List<Subscription.SubscriptionStatus> statuses);
 
     Optional<Subscription> findByStripeSubscriptionId(String stripeSubscriptionId);
+
+    Optional<Subscription> findByStripePaymentIntentId(String stripePaymentIntentId);
+
     Page<Subscription> findAllByOrderByCreatedAtDesc(Pageable pageable);
     long countByStatus(Subscription.SubscriptionStatus status);
 
