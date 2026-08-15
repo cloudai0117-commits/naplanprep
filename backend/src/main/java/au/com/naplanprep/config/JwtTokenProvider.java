@@ -6,6 +6,7 @@ import io.jsonwebtoken.security.Keys;
 import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.core.env.Environment;
 import org.springframework.core.io.ResourceLoader;
 import org.springframework.stereotype.Component;
 
@@ -22,6 +23,7 @@ public class JwtTokenProvider {
 
     private final AppProperties appProperties;
     private final ResourceLoader resourceLoader;
+    private final Environment environment;
 
     private PrivateKey privateKey;
     private PublicKey publicKey;
@@ -33,6 +35,14 @@ public class JwtTokenProvider {
             privateKey = loadPrivateKey(props.getPrivateKeyPath());
             publicKey = loadPublicKey(props.getPublicKeyPath());
         } catch (Exception e) {
+            for (String profile : environment.getActiveProfiles()) {
+                if ("uat".equals(profile) || "prod".equals(profile)) {
+                    throw new IllegalStateException(
+                        "JWT RSA keys are required in " + profile + " profile. " +
+                        "Set app.jwt.private-key-path and app.jwt.public-key-path. " +
+                        "Cause: " + e.getMessage(), e);
+                }
+            }
             log.warn("Could not load RSA keys from config, generating ephemeral keys for dev: {}", e.getMessage());
             generateEphemeralKeys();
         }

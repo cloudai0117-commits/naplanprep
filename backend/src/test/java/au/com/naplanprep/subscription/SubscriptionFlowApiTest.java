@@ -20,6 +20,9 @@ import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
+import javax.crypto.Mac;
+import javax.crypto.spec.SecretKeySpec;
+import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.UUID;
 
@@ -68,6 +71,9 @@ class SubscriptionFlowApiTest {
 
     @Autowired
     PlanRepository planRepository;
+
+    // Must match webhook-secret in application-test.yml (no "dummy"/"placeholder" — real HMAC is used).
+    static final String TEST_WEBHOOK_SECRET = "whsec_naplanprep_ci_test_signing_key_2024";
 
     private String standardPriceId;
     private String premiumPriceId;
@@ -141,9 +147,21 @@ class SubscriptionFlowApiTest {
 
         mockMvc.perform(post("/v1/subscriptions/webhooks/stripe")
                 .contentType(MediaType.APPLICATION_JSON)
-                .header("stripe-signature", "t=1,v1=dummy_bypass")
+                .header("stripe-signature", stripeSignatureHeader(payload, TEST_WEBHOOK_SECRET, now))
                 .content(payload))
                 .andExpect(status().isOk());
+    }
+
+    // Computes a Stripe-compatible webhook signature header.
+    // Stripe signs: HMAC-SHA256(secret, t + "." + rawPayload)
+    static String stripeSignatureHeader(String payload, String secret, long timestamp) throws Exception {
+        String signed = timestamp + "." + payload;
+        Mac mac = Mac.getInstance("HmacSHA256");
+        mac.init(new SecretKeySpec(secret.getBytes(StandardCharsets.UTF_8), "HmacSHA256"));
+        byte[] hash = mac.doFinal(signed.getBytes(StandardCharsets.UTF_8));
+        StringBuilder hex = new StringBuilder();
+        for (byte b : hash) hex.append(String.format("%02x", b));
+        return "t=" + timestamp + ",v1=" + hex;
     }
 
     private JsonNode currentSub(String token) throws Exception {
@@ -378,12 +396,44 @@ class SubscriptionFlowApiTest {
 
         mockMvc.perform(post("/v1/subscriptions/webhooks/stripe")
                 .contentType(MediaType.APPLICATION_JSON)
-                .header("stripe-signature", "t=1,v1=dummy_bypass")
+                .header("stripe-signature", stripeSignatureHeader(cancelPayload, TEST_WEBHOOK_SECRET, now))
                 .content(cancelPayload))
                 .andExpect(status().isOk());
 
         JsonNode data = currentSub(session.token());
         assertTrue(data.isNull() || data.isMissingNode(),
                 "After cancellation webhook, current subscription must be absent");
+    }
+
+    // ── 12. Invalid webhook signature → 400 ──────────────────────────────────
+
+    @Test
+    void webhook_with_invalid_signature_is_rejected() throws Exception {
+        long now = Instant.now().getEpochSecond();
+        String payload = """
+                {"id":"evt_fake","object":"event","type":"customer.subscription.created"}
+                """;
+        mockMvc.perform(post("/v1/subscriptions/webhooks/stripe")
+                .contentType(MediaType.APPLICATION_JSON)
+                .header("stripe-signature", "t=" + now + ",v1=invalid_signature_value")
+                .content(payload))
+                .andExpect(status().isBadRequest());
+    }
+
+    // ── 13. Valid signature accepted ──────────────────────────────────────────
+
+    @Test
+    void webhook_with_valid_signature_is_accepted() throws Exception {
+        long now = Instant.now().getEpochSecond();
+        // Minimal payload for an event type the service ignores (logs WEBHOOK_IGNORED)
+        String payload = """
+                {"id":"evt_sig_check","object":"event","type":"test.webhook.signature"}
+                """;
+        String sig = stripeSignatureHeader(payload, TEST_WEBHOOK_SECRET, now);
+        mockMvc.perform(post("/v1/subscriptions/webhooks/stripe")
+                .contentType(MediaType.APPLICATION_JSON)
+                .header("stripe-signature", sig)
+                .content(payload))
+                .andExpect(status().isOk());
     }
 }

@@ -65,12 +65,16 @@ logs/
 # Docker
 .docker/
 
-# Keys
+# Keys — never commit real private keys or prod credentials
 *.pem
 *.key
 *.p12
 *.jks
 backend/src/main/resources/keys/
+
+# Exception: synthetic RSA test keys committed intentionally as classpath resources.
+# These are NOT production keys — they protect no real data and are test-only.
+!backend/src/test/resources/jwt/*.pem
 
 # Test output
 test-results/
