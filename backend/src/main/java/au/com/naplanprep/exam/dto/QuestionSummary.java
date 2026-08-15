@@ -15,5 +15,7 @@ public record QuestionSummary(
     List<Map<String, Object>> options,
     String topic,
     Integer difficultyBand,
-    Boolean calculatorAllowed
+    Boolean calculatorAllowed,
+    String audioUrl,
+    String domain
 ) {}

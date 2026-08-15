@@ -223,7 +223,10 @@ export default function ExamPlayer() {
   }
 
   const answeredCount = Object.keys(answers).length
-  const progress = questions.length > 0 ? (answeredCount / questions.length) * 100 : 0
+  // NAPLAN Spelling has a pool of 43 questions (S1+S2A+S2B+S3A+S3B) but the student
+  // path is always 25 (7+9+9 through one branch). Show 25 for display purposes.
+  const displayTotal = session?.domain === 'SPELLING' ? 25 : questions.length
+  const progress = displayTotal > 0 ? (answeredCount / displayTotal) * 100 : 0
 
   return (
     <div className="fixed inset-0 z-50 bg-gray-50 flex flex-col">
@@ -253,7 +256,7 @@ export default function ExamPlayer() {
               <div data-testid="exam-title" className="text-xs text-gray-500 font-medium">{session.examTitle}</div>
             )}
             <span data-testid="question-counter" className="font-semibold text-gray-800">
-              Question {currentIdx + 1} of {questions.length}
+              Question {currentIdx + 1} of {displayTotal}
             </span>
           </div>
           <div className="hidden md:flex items-center text-sm text-gray-600">
@@ -263,7 +266,7 @@ export default function ExamPlayer() {
                 style={{ width: `${progress}%` }}
               />
             </span>
-            {answeredCount}/{questions.length} answered
+            {answeredCount}/{displayTotal} answered
           </div>
         </div>
         <div className={`font-mono text-lg font-bold ${timer.remaining < 300 ? 'text-red-600' : 'text-gray-800'}`}>
@@ -301,11 +304,46 @@ export default function ExamPlayer() {
                   </button>
                 </div>
 
-                {/* Calculator: shown only when the question explicitly permits it.
-                  calculatorAllowed comes from the server-side snapshot — authoritative. */}
-              {currentQuestion.calculatorAllowed === true && <CalculatorWidget key={currentQuestionId} />}
+                {/* Calculator: only for Numeracy questions that explicitly permit it.
+                  Domain and calculatorAllowed both come from the server-side snapshot. */}
+              {currentQuestion.domain === 'NUMERACY' && currentQuestion.calculatorAllowed === true && <CalculatorWidget key={currentQuestionId} />}
 
-              {currentQuestion.questionType === 'SHORT_ANSWER' ? (
+              {currentQuestion.questionType === 'AUDIO_RESPONSE' ? (
+                  <div className="mt-4">
+                    {currentQuestion.audioUrl ? (
+                      <div className="mb-4">
+                        <audio
+                          key={currentQuestionId}
+                          controls
+                          className="w-full"
+                          aria-label="Listen to the word to spell"
+                        >
+                          <source src={currentQuestion.audioUrl} type="audio/mpeg" />
+                        </audio>
+                        <p className="mt-1 text-xs text-gray-500">
+                          Listen to the audio, then type the correct spelling below.
+                        </p>
+                      </div>
+                    ) : (
+                      <div className="mb-4 p-3 bg-amber-50 border border-amber-200 rounded-lg text-sm text-amber-700">
+                        Audio for this item is not yet available. Type the correct spelling below.
+                      </div>
+                    )}
+                    <input
+                      type="text"
+                      autoComplete="off"
+                      autoCorrect="off"
+                      autoCapitalize="off"
+                      spellCheck={false}
+                      data-testid="short-answer-input"
+                      placeholder="Type the spelling here"
+                      value={answers[currentQuestionId] || ''}
+                      onChange={(e) => handleAnswer(currentQuestionId, e.target.value)}
+                      className="w-full border-2 border-gray-300 rounded-lg px-4 py-3 text-lg font-medium text-gray-800 focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-200 transition-colors"
+                    />
+                    <p className="mt-2 text-xs text-gray-500">Type one word. Spelling counts.</p>
+                  </div>
+                ) : currentQuestion.questionType === 'SHORT_ANSWER' ? (
                   <div className="mt-4">
                     <input
                       type="text"
@@ -424,10 +462,10 @@ export default function ExamPlayer() {
           <div className="bg-white rounded-xl p-6 max-w-md w-full mx-4 shadow-xl">
             <h3 className="text-lg font-semibold text-gray-900 mb-2">Submit Exam?</h3>
             <p className="text-gray-600 text-sm mb-4">
-              You have answered {answeredCount} of {questions.length} questions.
-              {questions.length - answeredCount > 0 && (
+              You have answered {answeredCount} of {displayTotal} questions.
+              {displayTotal - answeredCount > 0 && (
                 <span className="text-orange-600 font-medium">
-                  {' '}{questions.length - answeredCount} unanswered questions.
+                  {' '}{displayTotal - answeredCount} unanswered questions.
                 </span>
               )}
             </p>

@@ -1,7 +1,7 @@
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { useMutation, useQuery } from '@tanstack/react-query'
 import { useState, useRef, useEffect } from 'react'
 import apiClient from '@/api/client'
@@ -24,6 +24,8 @@ type FormData = z.infer<typeof schema>
 export default function RegisterPage() {
   const navigate = useNavigate()
   const setAuth = useAuthStore((s) => s.setAuth)
+  const [searchParams] = useSearchParams()
+  const redirectPlan = searchParams.get('plan')
   const [schoolSearch, setSchoolSearch] = useState('')
   const [showDropdown, setShowDropdown] = useState(false)
   const [selectedSchool, setSelectedSchool] = useState('')
@@ -50,12 +52,27 @@ export default function RegisterPage() {
     return () => document.removeEventListener('mousedown', handleClickOutside)
   }, [])
 
+  const { mutate: checkout } = useMutation({
+    mutationFn: (planSlug: string) =>
+      apiClient.post('/subscriptions/checkout', { planSlug }),
+    onSuccess: (res) => {
+      const url = res.data.data?.checkoutUrl
+      if (url) window.location.href = url
+      else navigate('/dashboard')
+    },
+    onError: () => navigate('/dashboard'),
+  })
+
   const { mutate, isPending, error } = useMutation({
     mutationFn: (data: FormData) => apiClient.post('/auth/register', { ...data, role: 'STUDENT' }),
     onSuccess: (res) => {
       const { accessToken, refreshToken, user } = res.data.data
       setAuth(user, accessToken, refreshToken)
-      navigate('/dashboard')
+      if (redirectPlan && redirectPlan !== 'free' && redirectPlan !== 'basic') {
+        checkout(redirectPlan)
+      } else {
+        navigate('/dashboard')
+      }
     },
   })
 

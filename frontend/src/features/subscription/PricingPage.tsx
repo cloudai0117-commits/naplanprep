@@ -109,7 +109,7 @@ export default function PricingPage() {
                   <span className="text-3xl font-bold text-gray-900">Free</span>
                 ) : (
                   <>
-                    <span className="text-3xl font-bold text-gray-900">${plan.monthlyPrice.toFixed(2)}</span>
+                    <span className="text-3xl font-bold text-gray-900">A${plan.monthlyPrice.toFixed(2)}</span>
                     <div className="text-xs text-gray-500 mt-1">One-time · Valid 1 year</div>
                   </>
                 )}
@@ -163,7 +163,7 @@ export default function PricingPage() {
                   onClick={() => {
                     setCheckoutError(null)
                     if (!isAuthenticated) {
-                      navigate('/register')
+                      navigate(`/register?plan=${plan.slug}`)
                       return
                     }
                     checkout(plan.slug)

@@ -251,7 +251,8 @@ public class ExamService {
                     return new QuestionSummary(q.getId(), eq.getQuestionOrder(),
                         q.getQuestionType(), q.getQuestionText(), q.getStimulusText(),
                         q.getOptions(), q.getTopic(), q.getDifficultyBand(),
-                        q.getCalculatorAllowed());
+                        q.getCalculatorAllowed(), q.getAudioUrl(),
+                        q.getDomain() != null ? q.getDomain().name() : null);
                 }).toList();
         }
 
@@ -264,7 +265,8 @@ public class ExamService {
             if (q != null) {
                 summaries.add(new QuestionSummary(q.getId(), i + 1, q.getQuestionType(),
                     q.getQuestionText(), q.getStimulusText(), q.getOptions(),
-                    q.getTopic(), q.getDifficultyBand(), q.getCalculatorAllowed()));
+                    q.getTopic(), q.getDifficultyBand(), q.getCalculatorAllowed(),
+                    q.getAudioUrl(), q.getDomain() != null ? q.getDomain().name() : null));
             }
         }
         return summaries;
@@ -708,7 +710,8 @@ public class ExamService {
                         eq.getQuestion().getQuestionType(), eq.getQuestion().getQuestionText(),
                         eq.getQuestion().getStimulusText(), eq.getQuestion().getOptions(),
                         eq.getQuestion().getTopic(), eq.getQuestion().getDifficultyBand(),
-                        eq.getQuestion().getCalculatorAllowed()))
+                        eq.getQuestion().getCalculatorAllowed(), eq.getQuestion().getAudioUrl(),
+                        eq.getQuestion().getDomain() != null ? eq.getQuestion().getDomain().name() : null))
                     .toList();
             } else {
                 summaries = new ArrayList<>();
@@ -717,7 +720,8 @@ public class ExamService {
                     if (q != null) {
                         summaries.add(new QuestionSummary(q.getId(), i + 1, q.getQuestionType(),
                             q.getQuestionText(), q.getStimulusText(), q.getOptions(),
-                            q.getTopic(), q.getDifficultyBand(), q.getCalculatorAllowed()));
+                            q.getTopic(), q.getDifficultyBand(), q.getCalculatorAllowed(),
+                            q.getAudioUrl(), q.getDomain() != null ? q.getDomain().name() : null));
                     }
                 }
             }
@@ -799,7 +803,9 @@ public class ExamService {
             (List<Map<String, Object>>) s.get("options"),
             (String) s.get("topic"),
             s.get("difficultyBand") instanceof Number n ? n.intValue() : null,
-            calcAllowed
+            calcAllowed,
+            (String) s.get("audioUrl"),
+            (String) s.get("domain")
         );
     }
 
