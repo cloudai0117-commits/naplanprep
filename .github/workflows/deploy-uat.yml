@@ -85,7 +85,7 @@ jobs:
     needs: build-and-push
 
     steps:
-      - name: Set Stripe env vars on Railway
+      - name: Set env vars on Railway
         run: |
           # Only upsert if value is non-empty — preserves existing Railway values
           # when a GitHub secret is not yet configured for this repo.
@@ -106,6 +106,9 @@ jobs:
           railway_var "STRIPE_ADVANCED_PRICE_ID"  "${{ secrets.STRIPE_TEST_ADVANCED_PRICE_ID }}"
           railway_var "STRIPE_PRO_PRICE_ID"       "${{ secrets.STRIPE_TEST_PRO_PRICE_ID }}"
           railway_var "SPRING_PROFILES_ACTIVE"    "uat"
+          # CI service account — bootstrapped by CiServiceAccountBootstrap at startup
+          railway_var "CI_SERVICE_EMAIL"          "${{ secrets.CI_SERVICE_EMAIL }}"
+          railway_var "CI_SERVICE_PASSWORD"       "${{ secrets.CI_SERVICE_PASSWORD }}"
           echo "Env var step complete (failures are non-fatal — vars persist in Railway)"
 
       - name: Update Railway service image and start command
@@ -139,11 +142,21 @@ jobs:
 
   # ─────────────────────────────────────────────────────────────────────────────
   # DB INTEGRITY GATE
-  # Polls /actuator/health/dbIntegrity — a dedicated Spring Boot component
-  # endpoint (no auth required; SecurityConfig permits /actuator/health/**).
-  # DbIntegrityHealthIndicator returns DOWN (HTTP 503) with details if any
-  # canonical count invariant fails; UP (HTTP 200) with details if all pass.
-  # Blocks frontend deploys until the 320-exam invariant is confirmed.
+  #
+  # Security model:
+  #   /actuator/health          — public (permitAll); used for liveness polling
+  #   /actuator/health/dbIntegrity — protected (anyRequest().authenticated())
+  #
+  # CI authenticates with a dedicated service account (PLATFORM_ADMIN role)
+  # bootstrapped at UAT startup by CiServiceAccountBootstrap from the
+  # CI_SERVICE_EMAIL / CI_SERVICE_PASSWORD Railway env vars. The JWT obtained
+  # here is ephemeral, never logged, and scoped to this CI run only.
+  #
+  # URL layout (explicit — no string-coincidence hacks):
+  #   API_BASE_URL      = vars.UAT_API_URL             (e.g. https://host/v1)
+  #   ACTUATOR_BASE_URL = vars.UAT_ACTUATOR_BASE_URL   (e.g. https://host)
+  #   If UAT_ACTUATOR_BASE_URL is not set, derives it from UAT_API_URL by
+  #   stripping the /v1 suffix as a fallback.
   # ─────────────────────────────────────────────────────────────────────────────
   db-integrity-gate:
     name: DB Integrity Gate
@@ -155,8 +168,14 @@ jobs:
       - name: Poll backend until UP or timeout
         id: health_poll
         run: |
-          BASE_URL="${{ vars.UAT_API_URL }}"
-          HEALTH_URL="${BASE_URL%/v1}/actuator/health"
+          API_BASE_URL="${{ vars.UAT_API_URL }}"
+          ACTUATOR_BASE_URL="${{ vars.UAT_ACTUATOR_BASE_URL }}"
+          if [ -z "$ACTUATOR_BASE_URL" ]; then
+            ACTUATOR_BASE_URL="${API_BASE_URL%/v1}"
+          fi
+          HEALTH_URL="$ACTUATOR_BASE_URL/actuator/health"
+          echo "API_BASE_URL:      $API_BASE_URL"
+          echo "ACTUATOR_BASE_URL: $ACTUATOR_BASE_URL"
           echo "Polling $HEALTH_URL until backend reports UP (max 6 min, 20s interval)..."
           for i in $(seq 1 18); do
             STATUS=$(curl -s -o /tmp/health.json -w "%{http_code}" "$HEALTH_URL" || echo "000")
@@ -178,21 +197,107 @@ jobs:
           echo "TIMEOUT: Backend did not reach UP status within 6 minutes"
           exit 1
 
-      - name: Validate DB integrity via /actuator/health/dbIntegrity
+      - name: Authenticate CI service account and validate DB integrity
+        env:
+          CI_SERVICE_EMAIL: ${{ secrets.CI_SERVICE_EMAIL }}
+          CI_SERVICE_PASSWORD: ${{ secrets.CI_SERVICE_PASSWORD }}
         run: |
-          BASE_URL="${{ vars.UAT_API_URL }}"
-          COMPONENT_URL="${BASE_URL%/v1}/actuator/health/dbIntegrity"
-          echo "Fetching $COMPONENT_URL"
-          HTTP_STATUS=$(curl -s -o /tmp/db_integrity.json -w "%{http_code}" "$COMPONENT_URL" || echo "000")
+          API_BASE_URL="${{ vars.UAT_API_URL }}"
+          ACTUATOR_BASE_URL="${{ vars.UAT_ACTUATOR_BASE_URL }}"
+          if [ -z "$ACTUATOR_BASE_URL" ]; then
+            ACTUATOR_BASE_URL="${API_BASE_URL%/v1}"
+          fi
+          COMPONENT_URL="$ACTUATOR_BASE_URL/actuator/health/dbIntegrity"
+
+          echo "API_BASE_URL:      $API_BASE_URL"
+          echo "ACTUATOR_BASE_URL: $ACTUATOR_BASE_URL"
+          echo "Component URL:     $COMPONENT_URL"
+
+          # ── Step A: Login with CI service account to obtain JWT ──────────────
+          # Credentials are in env vars (masked by GitHub Actions — never echoed).
+          # Written to a temp file to avoid shell interpolation in process table.
+          if [ -z "$CI_SERVICE_EMAIL" ] || [ -z "$CI_SERVICE_PASSWORD" ]; then
+            echo "FAIL: CI_SERVICE_EMAIL or CI_SERVICE_PASSWORD secret not configured."
+            echo "      Add these secrets to the repository (Settings → Secrets → Actions)"
+            echo "      and to Railway Variables so CiServiceAccountBootstrap can create the account."
+            exit 1
+          fi
+
+          printf '{"email":"%s","password":"%s"}' "$CI_SERVICE_EMAIL" "$CI_SERVICE_PASSWORD" > /tmp/.ci_login.json
+          LOGIN_HTTP=$(curl -s -o /tmp/.ci_login_resp.json -w "%{http_code}" \
+            -X POST "$API_BASE_URL/auth/login" \
+            -H "Content-Type: application/json" \
+            --data @/tmp/.ci_login.json)
+          rm -f /tmp/.ci_login.json
+
+          if [ "$LOGIN_HTTP" != "200" ]; then
+            echo "FAIL: CI service account login failed — HTTP $LOGIN_HTTP"
+            MSG=$(python3 -c "import json; d=json.load(open('/tmp/.ci_login_resp.json')); print(d.get('message','?'))" 2>/dev/null || echo "(no message)")
+            echo "      Response message: $MSG"
+            echo "      Ensure CI_SERVICE_EMAIL / CI_SERVICE_PASSWORD secrets match Railway vars"
+            echo "      and that CiServiceAccountBootstrap ran successfully on this deployment."
+            rm -f /tmp/.ci_login_resp.json
+            exit 1
+          fi
+
+          CI_JWT=$(python3 -c "import json; d=json.load(open('/tmp/.ci_login_resp.json')); print(d.get('data',{}).get('accessToken',''))" 2>/dev/null || echo "")
+          rm -f /tmp/.ci_login_resp.json
+
+          if [ -z "$CI_JWT" ]; then
+            echo "FAIL: CI login returned 200 but no accessToken in response"
+            exit 1
+          fi
+          echo "::add-mask::$CI_JWT"
+          echo "CI authentication: PASS"
+
+          # ── Step B: Call /actuator/health/dbIntegrity with JWT ───────────────
+          # CI_JWT is not logged — only used in the Authorization header.
+          echo "Fetching $COMPONENT_URL (authenticated)"
+          HTTP_STATUS=$(curl -s -o /tmp/db_integrity.json -w "%{http_code}" \
+            -H "Authorization: Bearer $CI_JWT" \
+            "$COMPONENT_URL" || echo "000")
           echo "HTTP status: $HTTP_STATUS"
+
+          # ── Step C: Guard against non-200 before JSON parsing ────────────────
+          if [ "$HTTP_STATUS" = "401" ]; then
+            echo "FAIL: DB Integrity endpoint returned 401 Unauthorized"
+            echo "      Possible causes:"
+            echo "        - JWT token was rejected (check CiServiceAccountBootstrap)"
+            echo "        - SecurityConfig does not grant authenticated access to this path"
+            exit 1
+          fi
+          if [ "$HTTP_STATUS" = "403" ]; then
+            echo "FAIL: DB Integrity endpoint returned 403 Forbidden"
+            echo "      The CI service account lacks the required role"
+            exit 1
+          fi
+          if [ "$HTTP_STATUS" = "404" ]; then
+            echo "FAIL: DB Integrity endpoint returned 404 — endpoint not registered"
+            echo "      Check management.endpoints.web.exposure.include includes 'health'"
+            echo "      and that DbIntegrityHealthIndicator is registered as component 'dbIntegrity'"
+            exit 1
+          fi
+          if [ "$HTTP_STATUS" != "200" ] && [ "$HTTP_STATUS" != "503" ]; then
+            echo "FAIL: Unexpected HTTP status $HTTP_STATUS from DB Integrity endpoint"
+            echo "Response body (first 500 chars):"
+            head -c 500 /tmp/db_integrity.json 2>/dev/null || echo "(empty)"
+            exit 1
+          fi
+
           echo "Response body:"
           cat /tmp/db_integrity.json | python3 -m json.tool 2>/dev/null || cat /tmp/db_integrity.json
 
+          # ── Step D: Parse and validate the integrity payload ─────────────────
           python3 << 'EOF'
           import json, sys
 
           with open('/tmp/db_integrity.json') as f:
-              data = json.load(f)
+              try:
+                  data = json.load(f)
+              except json.JSONDecodeError as e:
+                  print(f"FAIL: Response is not valid JSON: {e}")
+                  print("      This indicates the endpoint returned an unexpected body (e.g. HTML error page)")
+                  sys.exit(1)
 
           details = data.get('details', {})
           component_status = data.get('status', 'UNKNOWN')
@@ -207,7 +312,7 @@ jobs:
               flag = " *** FAIL ***" if "FAIL" in str(k) else ""
               print(f"  {k}: {details[k]}{flag}")
 
-          # Check if component itself returned DOWN
+          # Component itself reported DOWN
           if component_status == "DOWN":
               fail_keys = [k for k in details if "FAIL" in str(k)]
               print()
@@ -216,7 +321,7 @@ jobs:
                   print(f"  {k}: {details[k]}")
               sys.exit(1)
 
-          # Verify canonical expected counts from details
+          # Verify canonical counts
           failures = []
           checks = {
               'published_total':              (320, "Expected 320 PUBLISHED exams"),
@@ -326,8 +431,12 @@ jobs:
     steps:
       - name: Backend health (final confirmation)
         run: |
-          BASE_URL="${{ vars.UAT_API_URL }}"
-          HEALTH_URL="${BASE_URL%/v1}/actuator/health"
+          API_BASE_URL="${{ vars.UAT_API_URL }}"
+          ACTUATOR_BASE_URL="${{ vars.UAT_ACTUATOR_BASE_URL }}"
+          if [ -z "$ACTUATOR_BASE_URL" ]; then
+            ACTUATOR_BASE_URL="${API_BASE_URL%/v1}"
+          fi
+          HEALTH_URL="$ACTUATOR_BASE_URL/actuator/health"
           echo "Final health confirmation: $HEALTH_URL"
           curl -sf "$HEALTH_URL" | python3 -m json.tool
 
