@@ -28,6 +28,7 @@ public class ContentController {
     private final ContentService contentService;
 
     @GetMapping("/questions")
+    @PreAuthorize("hasRole('PLATFORM_ADMIN') or hasRole('TEACHER') or hasRole('SCHOOL_ADMIN')")
     public ResponseEntity<ApiResponse<Page<Question>>> searchQuestions(
         @RequestParam(required = false) Integer yearLevel,
         @RequestParam(required = false) Question.Domain domain,
