@@ -228,14 +228,7 @@ jobs:
             fi
 
             # Find the newest deployment with createdAt > PRE_TRIGGER_TIME
-            DEPLOY_ID=$(python3 -c "
-import json
-d = json.load(open('/tmp/deploys.json'))
-nodes = [e['node'] for e in d.get('data',{}).get('deployments',{}).get('edges',[])]
-nodes.sort(key=lambda n: n.get('createdAt',''), reverse=True)
-new = [n for n in nodes if n.get('createdAt','') > '$PRE_TRIGGER_TIME']
-print(new[0]['id'] if new else '')
-" 2>/dev/null || echo "")
+            DEPLOY_ID=$(python3 -c "import json; d=json.load(open('/tmp/deploys.json')); nodes=[e['node'] for e in d.get('data',{}).get('deployments',{}).get('edges',[])]; nodes.sort(key=lambda n:n.get('createdAt',''),reverse=True); new=[n for n in nodes if n.get('createdAt','')>'$PRE_TRIGGER_TIME']; print(new[0]['id'] if new else '')" 2>/dev/null || echo "")
 
             if [ -n "$DEPLOY_ID" ]; then
               echo "New Railway deployment found after attempt $ATTEMPT: $DEPLOY_ID"
