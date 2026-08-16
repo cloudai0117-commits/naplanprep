@@ -148,7 +148,7 @@ export default function ExamSelection() {
                       <div className="flex-1 min-w-0">
                         <p className="font-medium text-gray-900 text-sm truncate">{exam.title}</p>
                         <p className="text-xs text-gray-500 mt-0.5">
-                          Year {exam.yearLevel} · {(exam.domain || '').replace(/_/g, ' ')} · {exam.questionCount} questions · {Math.floor(exam.timeLimitSeconds / 60)} min
+                          Year {exam.yearLevel} · {(exam.domain || '').replace(/_/g, ' ')} · {exam.studentTestLength} questions · {Math.floor(exam.timeLimitSeconds / 60)} min
                         </p>
                       </div>
                       {isCompleted ? (

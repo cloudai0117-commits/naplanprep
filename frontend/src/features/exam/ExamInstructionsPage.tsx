@@ -93,7 +93,7 @@ export default function ExamInstructionsPage() {
 
         <div className="grid grid-cols-3 gap-4 py-4 border-y border-gray-100">
           <div className="text-center">
-            <div className="text-2xl font-bold text-gray-900">{exam.questionCount}</div>
+            <div className="text-2xl font-bold text-gray-900">{exam.studentTestLength}</div>
             <div className="text-xs text-gray-500 mt-1">Questions</div>
           </div>
           <div className="text-center">

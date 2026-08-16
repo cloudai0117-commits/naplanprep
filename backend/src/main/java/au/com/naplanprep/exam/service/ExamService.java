@@ -535,15 +535,15 @@ public class ExamService {
         return filtered.stream()
             .filter(exam -> qCounts.getOrDefault(exam.getId(), 0L) > 0)
             .map(exam -> {
-                int qCount = qCounts.getOrDefault(exam.getId(), 0L).intValue();
                 boolean attempted = submittedSessionIdByExamId.containsKey(exam.getId());
                 UUID completedSessionId = submittedSessionIdByExamId.get(exam.getId());
                 String availability = computeAvailability(exam, userPackages, now);
+                int testLength = exam.getStudentTestLength() != null ? exam.getStudentTestLength() : 0;
                 return new AvailableExamResponse(
                     exam.getId(), exam.getTitle(), exam.getDescription(),
                     exam.getDomain(), exam.getYearLevel(), exam.getTimeLimitSeconds(),
                     exam.getAvailableFrom(), exam.getAvailableUntil(),
-                    qCount, exam.getPackageType(), availability,
+                    testLength, exam.getPackageType(), availability,
                     attempted, completedSessionId
                 );
             }).toList();

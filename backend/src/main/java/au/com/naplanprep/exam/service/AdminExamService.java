@@ -108,7 +108,8 @@ public class AdminExamService {
             m.put("availableFrom", e.getAvailableFrom());
             m.put("availableUntil", e.getAvailableUntil());
             m.put("status", e.getStatus());
-            m.put("questionCount", qCounts.getOrDefault(e.getId(), 0L));
+            m.put("poolQuestionCount", qCounts.getOrDefault(e.getId(), 0L));
+            m.put("studentTestLength", e.getStudentTestLength() != null ? e.getStudentTestLength() : 0);
             m.put("attemptCount", attemptCounts.getOrDefault(e.getId(), 0L));
             m.put("createdAt", e.getCreatedAt());
             return m;

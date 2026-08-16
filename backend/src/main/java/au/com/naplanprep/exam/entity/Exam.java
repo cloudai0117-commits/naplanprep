@@ -46,6 +46,9 @@ public class Exam {
     @Column(nullable = false)
     private Integer timeLimitSeconds;
 
+    @Column(nullable = false)
+    private Integer studentTestLength;
+
     private Instant availableFrom;
     private Instant availableUntil;
 

@@ -73,7 +73,7 @@ export default function ExamList() {
                 <th className="text-left px-4 py-3 font-medium text-gray-600">Year</th>
                 <th className="text-left px-4 py-3 font-medium text-gray-600">Domain</th>
                 <th className="text-left px-4 py-3 font-medium text-gray-600">Tier</th>
-                <th className="text-left px-4 py-3 font-medium text-gray-600">Questions</th>
+                <th className="text-left px-4 py-3 font-medium text-gray-600">Student Q's (Pool)</th>
                 <th className="text-left px-4 py-3 font-medium text-gray-600">Attempts</th>
                 <th className="text-left px-4 py-3 font-medium text-gray-600">Status</th>
                 <th className="px-4 py-3" />
@@ -90,7 +90,7 @@ export default function ExamList() {
                       {exam.packageTier}
                     </span>
                   </td>
-                  <td className="px-4 py-3 text-gray-600">{exam.questionCount ?? '—'}</td>
+                  <td className="px-4 py-3 text-gray-600">{exam.studentTestLength ?? '—'} <span className="text-xs text-gray-400">({exam.poolQuestionCount ?? '—'} pool)</span></td>
                   <td className="px-4 py-3 text-gray-600">{exam.attemptCount ?? '—'}</td>
                   <td className="px-4 py-3">
                     <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${statusBadge(exam.status)}`}>

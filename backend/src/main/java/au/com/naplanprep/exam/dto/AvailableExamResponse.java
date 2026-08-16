@@ -15,9 +15,8 @@ public record AvailableExamResponse(
     Integer timeLimitSeconds,
     Instant availableFrom,
     Instant availableUntil,
-    int questionCount,
+    int studentTestLength,
     PackageType packageType,
-    /** AVAILABLE | UPCOMING | EXPIRED | UPGRADE_REQUIRED */
     String availability,
     boolean alreadyAttempted,
     UUID completedSessionId

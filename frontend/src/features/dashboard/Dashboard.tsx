@@ -288,7 +288,7 @@ export default function Dashboard() {
                           </span>
                         </div>
                         <p className="text-xs text-gray-500 mb-3">
-                          Year {exam.yearLevel} · {domainLabel(exam.domain)} · {exam.questionCount}Q
+                          Year {exam.yearLevel} · {domainLabel(exam.domain)} · {exam.studentTestLength}Q
                         </p>
                         <div className="flex items-center justify-between">
                           <span className="text-xs text-gray-500">
