@@ -1,22 +1,32 @@
+server:
+  # Azure Front Door sends X-Forwarded-For; NATIVE lets Tomcat's RemoteIpValve
+  # set request.getRemoteAddr() to the real client IP for rate limiting.
+  forward-headers-strategy: NATIVE
+
 spring:
   datasource:
-    url: jdbc:postgresql://${DB_HOST}:${DB_PORT:5432}/naplanprep_prod
+    url: jdbc:postgresql://${DB_HOST}:${DB_PORT:5432}/${DB_NAME:naplanprep_prod}
     username: ${DB_USERNAME}
     password: ${DB_PASSWORD}
     driver-class-name: org.postgresql.Driver
     hikari:
-      maximum-pool-size: 30
+      maximum-pool-size: 20
+      minimum-idle: 5
       connection-timeout: 30000
       idle-timeout: 600000
       max-lifetime: 1800000
+      keepalive-time: 60000
   data:
     redis:
       host: ${REDIS_HOST}
-      port: ${REDIS_PORT:6379}
+      port: ${REDIS_PORT:6380}
       password: ${REDIS_PASSWORD}
       timeout: 2000ms
       ssl:
-        enabled: ${REDIS_SSL:false}
+        enabled: ${REDIS_SSL:true}
+  flyway:
+    out-of-order: false
+    validate-on-migrate: true
 
 logging:
   level:
@@ -43,8 +53,12 @@ app:
     allowed-origins:
       - https://naplanprep.com.au
       - https://www.naplanprep.com.au
+      - https://app.naplanprep.com.au
       - https://admin.naplanprep.com.au
-  frontend-url: https://naplanprep.com.au
+  frontend-url: https://app.naplanprep.com.au
+  stripe:
+    advanced-price-id: ${STRIPE_ADVANCED_PRICE_ID}
+    pro-price-id: ${STRIPE_PRO_PRICE_ID}
   rate-limit:
     auth-attempts: 5
     auth-lockout-minutes: 15

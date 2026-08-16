@@ -1,0 +1,258 @@
+name: Deploy — Production (Azure)
+
+# Runs only after CI passes on main, OR via manual trigger with confirmation.
+on:
+  workflow_run:
+    workflows: ["CI — Test & Build"]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: 'Type DEPLOY to confirm production deployment'
+        required: true
+
+env:
+  ACR_NAME: npprodacr
+  BACKEND_IMAGE: npprodacr.azurecr.io/naplanprep-backend
+  CONTAINER_APP: npp-prod-ca-api
+  RESOURCE_GROUP: npp-prod-rg-app
+  PROD_API_URL: https://api.naplanprep.com.au/v1
+  PROD_ACTUATOR_URL: https://api.naplanprep.com.au
+
+permissions:
+  id-token: write   # Required for OIDC
+  contents: read
+
+jobs:
+  guard:
+    name: Guard — CI must have passed
+    runs-on: ubuntu-latest
+    if: >
+      github.event_name == 'workflow_dispatch' ||
+      github.event.workflow_run.conclusion == 'success'
+    steps:
+      - name: Confirm manual deploy input
+        if: github.event_name == 'workflow_dispatch'
+        run: |
+          if [ "${{ github.event.inputs.confirm }}" != "DEPLOY" ]; then
+            echo "ERROR: Type DEPLOY to confirm. Got: ${{ github.event.inputs.confirm }}"
+            exit 1
+          fi
+          echo "Production deployment confirmed."
+
+  build-and-push:
+    name: Build & Push to ACR
+    runs-on: ubuntu-latest
+    needs: guard
+    outputs:
+      image-tag: ${{ steps.tag.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v4.2.2
+
+      - name: Azure Login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Set image tag
+        id: tag
+        run: echo "tag=prod-$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
+
+      - name: Login to ACR
+        run: az acr login --name ${{ env.ACR_NAME }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and push backend image
+        uses: docker/build-push-action@v6
+        with:
+          context: ./backend
+          push: true
+          tags: |
+            ${{ env.BACKEND_IMAGE }}:${{ steps.tag.outputs.tag }}
+            ${{ env.BACKEND_IMAGE }}:prod-latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          build-args: |
+            SPRING_PROFILES_ACTIVE=prod
+
+  container-scan:
+    name: Container Vulnerability Scan
+    runs-on: ubuntu-latest
+    needs: build-and-push
+    steps:
+      - name: Azure Login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Scan image with Trivy (CRITICAL exit-code 1)
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: ${{ env.BACKEND_IMAGE }}:${{ needs.build-and-push.outputs.image-tag }}
+          format: table
+          severity: CRITICAL
+          exit-code: '1'
+
+  deploy-backend:
+    name: Deploy Backend
+    runs-on: ubuntu-latest
+    needs: [build-and-push, container-scan]
+    environment: production
+    steps:
+      - name: Azure Login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Deploy new revision (single-revision mode, replaces active)
+        run: |
+          TAG="${{ needs.build-and-push.outputs.image-tag }}"
+          az containerapp update \
+            --name ${{ env.CONTAINER_APP }} \
+            --resource-group ${{ env.RESOURCE_GROUP }} \
+            --image "${{ env.BACKEND_IMAGE }}:$TAG" \
+            --revision-suffix "git-${TAG}"
+
+  health-gate:
+    name: Health Gate
+    runs-on: ubuntu-latest
+    needs: deploy-backend
+    steps:
+      - name: Poll backend health (30s startup + 8 min max)
+        run: |
+          HEALTH_URL="${{ env.PROD_ACTUATOR_URL }}/actuator/health"
+          echo "Waiting 30s for container startup..."
+          sleep 30
+          for i in $(seq 1 24); do
+            HTTP=$(curl -s -o /tmp/health.json -w "%{http_code}" --max-time 15 "$HEALTH_URL" || echo "000")
+            STATUS=$(python3 -c "import json; print(json.load(open('/tmp/health.json')).get('status',''))" 2>/dev/null || echo "")
+            echo "Attempt $i/24 — HTTP $HTTP — status: ${STATUS:-?}"
+            if [ "$HTTP" = "200" ] && [ "$STATUS" = "UP" ]; then
+              echo "BACKEND_HEALTH = PASS"
+              exit 0
+            fi
+            sleep 20
+          done
+          echo "TIMEOUT: backend did not reach UP within 8 minutes"
+          exit 1
+
+  db-integrity-gate:
+    name: DB Integrity Gate
+    runs-on: ubuntu-latest
+    needs: health-gate
+    env:
+      CI_SERVICE_EMAIL: ${{ secrets.CI_SERVICE_EMAIL }}
+      CI_SERVICE_PASSWORD: ${{ secrets.CI_SERVICE_PASSWORD }}
+    steps:
+      - name: Authenticate and verify 320-exam catalogue
+        run: |
+          API_BASE_URL="${{ env.PROD_API_URL }}"
+          ACTUATOR_BASE_URL="${{ env.PROD_ACTUATOR_URL }}"
+
+          printf '{"email":"%s","password":"%s"}' "$CI_SERVICE_EMAIL" "$CI_SERVICE_PASSWORD" > /tmp/.ci_login.json
+          LOGIN_HTTP=$(curl -s -o /tmp/.ci_resp.json -w "%{http_code}" \
+            -X POST "$API_BASE_URL/auth/login" \
+            -H "Content-Type: application/json" \
+            --data @/tmp/.ci_login.json)
+          rm -f /tmp/.ci_login.json
+
+          if [ "$LOGIN_HTTP" != "200" ]; then
+            echo "FAIL: CI login returned HTTP $LOGIN_HTTP"
+            exit 1
+          fi
+
+          CI_JWT=$(python3 -c "import json; print(json.load(open('/tmp/.ci_resp.json')).get('data',{}).get('accessToken',''))")
+          rm -f /tmp/.ci_resp.json
+          echo "::add-mask::$CI_JWT"
+
+          curl -s -o /tmp/integrity.json -w "%{http_code}" \
+            -H "Authorization: Bearer $CI_JWT" \
+            "$ACTUATOR_BASE_URL/actuator/health/dbIntegrity" > /dev/null
+
+          python3 << 'EOF'
+          import json, sys
+          with open('/tmp/integrity.json') as f:
+              data = json.load(f)
+          details = data.get('details', {})
+          checks = {
+              'published_total': 320,
+              'year_3': 80, 'year_5': 80, 'year_7': 80, 'year_9': 80,
+              'package_FREE': 20, 'package_ADVANCED': 100, 'package_PREMIUM': 200,
+              'year_domain_pairs_wrong_count': 0,
+              'published_without_questions': 0,
+              'audio_response_spelling': 0,
+          }
+          failures = []
+          for key, expected in checks.items():
+              actual = details.get(key)
+              if actual is None or int(actual) != expected:
+                  failures.append(f"FAIL: {key} expected={expected} actual={actual}")
+              else:
+                  print(f"  PASS: {key} = {actual}")
+          if failures:
+              print("\nDB_INTEGRITY_GATE = FAIL")
+              for f in failures:
+                  print(f"  {f}")
+              sys.exit(1)
+          print("\nDB_INTEGRITY_GATE = PASS — all 320 exams verified")
+          EOF
+
+  deploy-frontends:
+    name: Deploy Frontend & Admin (Static Web Apps)
+    runs-on: ubuntu-latest
+    needs: db-integrity-gate
+    steps:
+      - uses: actions/checkout@v4.2.2
+
+      - name: Deploy Student Frontend
+        uses: Azure/static-web-apps-deploy@v1
+        with:
+          azure_static_web_apps_api_token: ${{ secrets.PROD_SWA_FRONTEND_TOKEN }}
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          action: upload
+          app_location: frontend
+          output_location: dist
+          app_build_command: npm run build
+        env:
+          VITE_API_URL: ${{ env.PROD_API_URL }}
+          VITE_STRIPE_KEY: ${{ secrets.STRIPE_LIVE_PUBLISHABLE_KEY }}
+
+      - name: Deploy Admin Panel
+        uses: Azure/static-web-apps-deploy@v1
+        with:
+          azure_static_web_apps_api_token: ${{ secrets.PROD_SWA_ADMIN_TOKEN }}
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          action: upload
+          app_location: admin-panel
+          output_location: dist
+          app_build_command: npm run build
+        env:
+          VITE_API_URL: ${{ env.PROD_API_URL }}
+
+  smoke-test:
+    name: Smoke Test
+    runs-on: ubuntu-latest
+    needs: deploy-frontends
+    steps:
+      - name: Verify API health and subscription plans endpoint
+        run: |
+          HTTP=$(curl -s -o /dev/null -w "%{http_code}" --max-time 15 "${{ env.PROD_ACTUATOR_URL }}/actuator/health")
+          if [ "$HTTP" != "200" ]; then
+            echo "FAIL: /actuator/health returned HTTP $HTTP after deploy"
+            exit 1
+          fi
+          PLANS_HTTP=$(curl -s -o /dev/null -w "%{http_code}" --max-time 15 "${{ env.PROD_API_URL }}/subscriptions/plans")
+          if [ "$PLANS_HTTP" != "200" ]; then
+            echo "FAIL: /subscriptions/plans returned HTTP $PLANS_HTTP"
+            exit 1
+          fi
+          echo "SMOKE_TEST = PASS"

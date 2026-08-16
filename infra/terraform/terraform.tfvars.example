@@ -1,0 +1,33 @@
+# ─── terraform.tfvars.example ─────────────────────────────────────────────────
+# Copy this file to terraform.tfvars for local plan/apply.
+# DO NOT commit terraform.tfvars — it contains sensitive values.
+# In CI/CD, supply variables via GitHub Actions secrets mapped to TF_VAR_* env vars.
+# ──────────────────────────────────────────────────────────────────────────────
+
+# ── Core ──────────────────────────────────────────────────────────────────────
+location    = "australiaeast"
+dr_location = "australiasoutheast"
+environment = "prod"
+project     = "npp"
+
+# ── PostgreSQL ────────────────────────────────────────────────────────────────
+postgresql_admin_username = "naplanprep_admin"
+postgresql_admin_password = "CHANGE_ME_MIN_16_CHARS_UPPER_LOWER_NUMBER_SYMBOL"
+postgresql_sku_name       = "GP_Standard_D4s_v3"
+postgresql_version        = "16"
+
+# ── Container App image ───────────────────────────────────────────────────────
+# Set by CI/CD on each deploy: npprodacr.azurecr.io/naplanprep-backend:{git-sha}
+container_app_image = "npprodacr.azurecr.io/naplanprep-backend:prod-0000000"
+
+# ── Stripe ────────────────────────────────────────────────────────────────────
+# Publishable key is NOT a secret — it is the pk_live_... key shown in the Stripe
+# dashboard. Do NOT put the secret key (sk_live_...) here.
+stripe_publishable_key = "pk_live_REPLACE_ME"
+
+# ── GitHub OIDC ───────────────────────────────────────────────────────────────
+github_repo                = "your-org/naplanprep"
+github_actions_environment = "production"
+
+# ── Monitoring ────────────────────────────────────────────────────────────────
+alert_email = "ops@naplanprep.com.au"
