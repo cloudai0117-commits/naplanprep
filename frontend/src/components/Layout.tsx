@@ -17,7 +17,6 @@ export default function Layout() {
   const location = useLocation()
   const queryClient = useQueryClient()
 
-  // Fix 6: clear all cached data on logout so the next user never sees stale data
   const handleLogout = async () => {
     try {
       await apiClient.post('/auth/logout')
@@ -28,13 +27,14 @@ export default function Layout() {
     }
   }
 
-  // Fix 4: sync logout across browser tabs via localStorage storage events
+  // Sync logout across browser tabs — only relevant when authenticated
   useEffect(() => {
+    if (!isAuthenticated) return
     const handleStorageChange = (e: StorageEvent) => {
       if (e.key !== 'naplanprep-auth') return
       try {
         const newState = e.newValue ? JSON.parse(e.newValue) : null
-        if (!newState?.state?.isAuthenticated && isAuthenticated) {
+        if (!newState?.state?.isAuthenticated) {
           queryClient.clear()
           logout()
           navigate('/login')
@@ -46,6 +46,39 @@ export default function Layout() {
     window.addEventListener('storage', handleStorageChange)
     return () => window.removeEventListener('storage', handleStorageChange)
   }, [isAuthenticated, logout, navigate, queryClient])
+
+  const footer = (
+    <footer className="bg-white border-t border-gray-200 py-4 text-center text-sm text-gray-500">
+      © 2024 NAPLANPrep. All rights reserved.
+    </footer>
+  )
+
+  if (!isAuthenticated) {
+    return (
+      <div className="min-h-screen flex flex-col">
+        <nav className="bg-white border-b border-gray-200 sticky top-0 z-10">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div className="flex justify-between items-center h-16">
+              <Link to="/" className="text-xl font-bold text-primary-600">NAPLANPrep</Link>
+              <div className="flex items-center space-x-3">
+                <Link to="/pricing" className={`text-sm font-medium transition-colors px-3 py-2 rounded-md ${
+                  location.pathname === '/pricing' ? 'text-primary-700' : 'text-gray-600 hover:text-gray-900'
+                }`}>
+                  Pricing
+                </Link>
+                <Link to="/login" className="btn-secondary text-sm py-1.5 px-3">Sign in</Link>
+                <Link to="/register" className="btn-primary text-sm py-1.5 px-3">Create account</Link>
+              </div>
+            </div>
+          </div>
+        </nav>
+        <main className="flex-1 max-w-7xl mx-auto w-full px-4 sm:px-6 lg:px-8 py-8">
+          <Outlet />
+        </main>
+        {footer}
+      </div>
+    )
+  }
 
   return (
     <div className="min-h-screen flex flex-col">
@@ -107,9 +140,7 @@ export default function Layout() {
         <Outlet />
       </main>
 
-      <footer className="bg-white border-t border-gray-200 py-4 text-center text-sm text-gray-500">
-        © 2024 NAPLANPrep. All rights reserved.
-      </footer>
+      {footer}
     </div>
   )
 }

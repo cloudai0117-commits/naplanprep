@@ -28,9 +28,15 @@ export default function Dashboard() {
   const location = useLocation()
   const queryClient = useQueryClient()
   const [checkoutSuccess, setCheckoutSuccess] = useState(false)
+  const [isNewUser, setIsNewUser] = useState(false)
 
   useEffect(() => {
     const params = new URLSearchParams(location.search)
+    if (params.get('new') === '1') {
+      setIsNewUser(true)
+      navigate('/dashboard', { replace: true })
+      return
+    }
     if (params.get('checkout') === 'success') {
       setCheckoutSuccess(true)
       navigate('/dashboard', { replace: true })
@@ -112,10 +118,14 @@ export default function Dashboard() {
       <div className="flex justify-between items-center">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">
-            Welcome back, {user?.firstName}!
+            {isNewUser
+              ? `Welcome to NAPLANPrep, ${user?.firstName}!`
+              : `Welcome back, ${user?.firstName}!`}
           </h1>
           <p className="text-gray-600 text-sm mt-1">
-            {user?.yearLevel ? `Year ${user.yearLevel}` : ''} · Ready to practice?
+            {isNewUser
+              ? 'Your account is ready. Start with a free exam below.'
+              : `${user?.yearLevel ? `Year ${user.yearLevel} · ` : ''}Ready to practice?`}
           </p>
         </div>
         {subscription && (

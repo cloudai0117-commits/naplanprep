@@ -1,5 +1,6 @@
 import { Outlet, Link, useLocation, useNavigate } from 'react-router-dom'
 import { useAdminStore } from '@/store/adminStore'
+import { useQueryClient } from '@tanstack/react-query'
 import apiClient from '@/api/client'
 
 const navItems = [
@@ -17,9 +18,11 @@ export default function AdminLayout() {
   const { user, logout } = useAdminStore()
   const location = useLocation()
   const navigate = useNavigate()
+  const queryClient = useQueryClient()
 
   const handleLogout = async () => {
     try { await apiClient.post('/auth/logout') } finally {
+      queryClient.clear()
       logout()
       navigate('/login')
     }

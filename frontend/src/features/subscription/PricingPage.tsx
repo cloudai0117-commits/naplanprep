@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useQuery, useMutation } from '@tanstack/react-query'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, Link } from 'react-router-dom'
 import apiClient from '@/api/client'
 import { useAuthStore } from '@/store/authStore'
 
@@ -60,6 +60,15 @@ export default function PricingPage() {
         <h1 className="text-3xl font-bold text-gray-900">Choose Your Plan</h1>
         <p className="text-gray-600 mt-2">One-time purchase · Valid for 1 year · No subscription</p>
       </div>
+
+      {!isAuthenticated && (
+        <div className="text-center text-sm text-gray-700 bg-blue-50 border border-blue-100 rounded-lg py-3 px-4">
+          Sign in or create a free account to get started.{' '}
+          <Link to="/login" className="font-medium text-primary-600 hover:text-primary-700">Sign in</Link>
+          {' · '}
+          <Link to="/register" className="font-medium text-primary-600 hover:text-primary-700">Create account</Link>
+        </div>
+      )}
 
       {currentSub && (
         <div className="card bg-blue-50 border border-blue-200">
@@ -155,9 +164,18 @@ export default function PricingPage() {
                   Current Plan ✓
                 </div>
               ) : plan.monthlyPrice === 0 ? (
-                <div className="text-center py-2 px-4 rounded-lg bg-gray-50 text-gray-500 text-sm">
-                  Free forever
-                </div>
+                isAuthenticated ? (
+                  <div className="text-center py-2 px-4 rounded-lg bg-gray-50 text-gray-500 text-sm">
+                    Free forever
+                  </div>
+                ) : (
+                  <Link
+                    to="/register"
+                    className="block text-center py-2 px-4 rounded-lg bg-gray-100 text-gray-800 hover:bg-gray-200 font-semibold text-sm transition-colors"
+                  >
+                    Sign up free
+                  </Link>
+                )
               ) : (
                 <button
                   onClick={() => {

@@ -71,7 +71,7 @@ export default function RegisterPage() {
       if (redirectPlan && redirectPlan !== 'free' && redirectPlan !== 'basic') {
         checkout(redirectPlan)
       } else {
-        navigate('/dashboard')
+        navigate('/dashboard?new=1')
       }
     },
   })
