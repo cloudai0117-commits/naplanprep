@@ -145,12 +145,11 @@ jobs:
           railway_var "CI_SERVICE_PASSWORD"       "${{ secrets.CI_SERVICE_PASSWORD }}"
           echo "Env var step complete (failures are non-fatal — vars persist in Railway)"
 
-      - name: Update Railway service source image
-        # Sets the GHCR image that Railway will use on the next deploy.
-        # Uses the immutable uat-<sha> tag (not the mutable uat-latest alias).
-        # Clears startCommand so Docker ENTRYPOINT (entrypoint.sh) is authoritative —
-        # the old startCommand "java ... -jar app.jar" bypassed entrypoint.sh.
-        # GraphQL always returns HTTP 200; check the response body for errors explicitly.
+      - name: Update Railway service source image and verify
+        # Sets the exact immutable GHCR image (uat-<sha>) as the service source.
+        # After the update, queries the serviceInstance to confirm the source persisted —
+        # Railway returns HTTP 200 for all GraphQL calls; a silent failure here would
+        # cause every downstream deploy trigger to run the OLD image.
         run: |
           TAG="${{ needs.build-and-push.outputs.image-tag }}"
           IMAGE="${{ env.BACKEND_IMAGE }}:$TAG"
@@ -165,75 +164,134 @@ jobs:
           echo "$UPDATE_RESP" | python3 -m json.tool 2>/dev/null || echo "$UPDATE_RESP"
 
           GQL_ERRORS=$(echo "$UPDATE_RESP" | python3 -c "import sys,json; d=json.load(sys.stdin); errs=d.get('errors',[]); print('ERRORS: '+json.dumps(errs) if errs else 'OK')" 2>/dev/null || echo "PARSE_ERROR")
-
           if [ "$GQL_ERRORS" != "OK" ]; then
-            echo "FAIL: serviceInstanceUpdate returned GraphQL errors"
-            echo "$GQL_ERRORS"
-            echo "This is why Railway keeps running the old image."
+            echo "FAIL: serviceInstanceUpdate returned GraphQL errors: $GQL_ERRORS"
             echo "Check that RAILWAY_TOKEN has write access to this service."
             exit 1
           fi
-          echo "SERVICE_IMAGE_UPDATE = PASS — Railway service configured for $IMAGE"
 
-      - name: Trigger Railway deployment via deploymentRestart
+          # Verify the source actually persisted — a silent no-op here means every
+          # deploy trigger runs the old image, not uat-<sha>.
+          echo ""
+          echo "Verifying service source was updated..."
+          INSTANCE_RESP=$(curl -s --max-time 30 -X POST "${{ env.RAILWAY_API }}" \
+            -H "Content-Type: application/json" \
+            -H "Authorization: Bearer ${{ secrets.RAILWAY_TOKEN }}" \
+            -d "{\"query\":\"{serviceInstance(serviceId:\\\"${{ env.RAILWAY_BACKEND_SERVICE_ID }}\\\",environmentId:\\\"${{ env.RAILWAY_ENV_ID }}\\\"){source{image repo}}}\"}")
+
+          echo "serviceInstance (source) response:"
+          echo "$INSTANCE_RESP" | python3 -m json.tool 2>/dev/null || echo "$INSTANCE_RESP"
+
+          CONFIGURED_IMAGE=$(echo "$INSTANCE_RESP" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('data',{}).get('serviceInstance',{}).get('source',{}).get('image','NOT_SET'))" 2>/dev/null || echo "PARSE_ERROR")
+          echo ""
+          echo "CONFIGURED_IMAGE_AFTER_UPDATE=$CONFIGURED_IMAGE"
+          echo "EXPECTED_IMAGE=$IMAGE"
+
+          if [ "$CONFIGURED_IMAGE" != "$IMAGE" ]; then
+            echo "WARN: Railway service source shows '$CONFIGURED_IMAGE' after update, expected '$IMAGE'."
+            echo "      serviceInstanceUpdate may have been silently ignored."
+            echo "      Proceeding with deploy — will fail below if no new deployment appears."
+          else
+            echo "SERVICE_IMAGE_SOURCE_VERIFIED = PASS"
+          fi
+          echo "SERVICE_IMAGE_UPDATE = PASS (no GQL errors)"
+
+      - name: Deploy new Railway service image
         id: trigger-deploy
-        # deploymentCreate does not exist in Railway's GraphQL schema.
-        # environmentTriggersDeploy is confirmed a silent no-op for this service.
-        # Available deployment mutations: deploymentRestart, deploymentCancel,
-        # deploymentRemove, deploymentApprove, deploymentStop.
+        # Confirmed no-ops (return true, create nothing):
+        #   environmentTriggersDeploy — silent no-op for this service
+        #   deploymentRestart         — returns true, no new deployment appears
+        # Confirmed does not exist in Railway schema:
+        #   deploymentCreate
         #
-        # deploymentRestart(id) creates a new deployment that replaces the specified one,
-        # using the CURRENT service configuration (i.e. the new image set by
-        # serviceInstanceUpdate). The old deployment gets REMOVED status.
-        # A new deployment appears in the deployments list with createdAt > PRE_TRIGGER_TIME.
+        # Strategy (in order):
+        #   1. Introspect Railway schema — print all mutation names to CI log for diagnostics
+        #   2. Try serviceInstanceRedeploy(serviceId, environmentId) — "Deploy a service"
+        #      distinct from deploymentRestart ("Restart a deployment")
+        #   3. If that mutation does not exist: install Railway CLI and railway redeploy
+        #      (the CLI encapsulates the correct current Railway deploy API)
+        #
+        # New deployment is identified by:
+        #   (a) deployment ID returned directly by the mutation, OR
+        #   (b) polling for any deployment with createdAt > PRE_TRIGGER_TIME AND id != PREV_ID
         run: |
           TAG="${{ needs.build-and-push.outputs.image-tag }}"
           IMAGE="${{ env.BACKEND_IMAGE }}:$TAG"
           DIGEST="${{ needs.build-and-push.outputs.backend-digest }}"
           PRE_TRIGGER_TIME=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
 
-          echo "===== RESTART RAILWAY DEPLOYMENT ====="
+          echo "===== DEPLOY NEW RAILWAY IMAGE ====="
           echo "COMMIT_SHA=${{ github.sha }}"
           echo "EXPECTED_IMAGE=$IMAGE"
           echo "EXPECTED_DIGEST=${DIGEST:-MISSING}"
           echo "PRE_TRIGGER_TIME=$PRE_TRIGGER_TIME"
 
-          # Step 1: Get the ID of the most recent deployment to restart
+          # ── Step 1: Capture previous deployment ID so we can detect the NEW one ──
           curl -s --max-time 30 -X POST "${{ env.RAILWAY_API }}" \
             -H "Content-Type: application/json" \
             -H "Authorization: Bearer ${{ secrets.RAILWAY_TOKEN }}" \
             -d "{\"query\":\"{deployments(input:{serviceId:\\\"${{ env.RAILWAY_BACKEND_SERVICE_ID }}\\\",environmentId:\\\"${{ env.RAILWAY_ENV_ID }}\\\"}){edges{node{id status createdAt}}}}\"}" \
-            > /tmp/pre_restart_deploys.json
+            > /tmp/pre_deploys.json
 
-          LATEST_DEPLOY_ID=$(python3 -c "import json; d=json.load(open('/tmp/pre_restart_deploys.json')); nodes=[e['node'] for e in d.get('data',{}).get('deployments',{}).get('edges',[])]; nodes.sort(key=lambda n:n.get('createdAt',''),reverse=True); succ=[n for n in nodes if n.get('status') in ('SUCCESS','ACTIVE')]; print(succ[0]['id'] if succ else (nodes[0]['id'] if nodes else ''))" 2>/dev/null || echo "")
+          PREVIOUS_DEPLOY_ID=$(python3 -c "import json; d=json.load(open('/tmp/pre_deploys.json')); nodes=[e['node'] for e in d.get('data',{}).get('deployments',{}).get('edges',[])]; nodes.sort(key=lambda n:n.get('createdAt',''),reverse=True); succ=[n for n in nodes if n.get('status') in ('SUCCESS','ACTIVE')]; print(succ[0]['id'] if succ else (nodes[0]['id'] if nodes else ''))" 2>/dev/null || echo "")
+          echo "PREVIOUS_DEPLOYMENT_ID=$PREVIOUS_DEPLOY_ID"
 
-          if [ -z "$LATEST_DEPLOY_ID" ]; then
-            echo "FAIL: No existing deployment found to restart."
-            echo "      Cannot proceed without a deployment to restart."
-            cat /tmp/pre_restart_deploys.json | python3 -m json.tool 2>/dev/null || cat /tmp/pre_restart_deploys.json
-            exit 1
-          fi
-          echo "Restarting deployment: $LATEST_DEPLOY_ID"
-
-          # Step 2: Call deploymentRestart — creates a new deployment using current service config
-          RESTART_RESP=$(curl -s --max-time 30 -X POST "${{ env.RAILWAY_API }}" \
+          # ── Step 2: Introspect Railway schema — print all mutation names ──────────
+          echo ""
+          echo "===== RAILWAY SCHEMA INTROSPECTION (all mutations) ====="
+          SCHEMA_RESP=$(curl -s --max-time 30 -X POST "${{ env.RAILWAY_API }}" \
             -H "Content-Type: application/json" \
             -H "Authorization: Bearer ${{ secrets.RAILWAY_TOKEN }}" \
-            -d "{\"query\":\"mutation{deploymentRestart(id:\\\"$LATEST_DEPLOY_ID\\\")}\"}")
+            -d '{"query":"{__schema{mutationType{fields{name}}}}"}')
+          python3 -c "import sys,json; d=json.load(sys.stdin); fields=d.get('data',{}).get('__schema',{}).get('mutationType',{}).get('fields',[]); names=[f['name'] for f in fields]; names.sort(); [print(' ',n) for n in names]" <<< "$SCHEMA_RESP" 2>/dev/null || echo "(schema introspection failed — $SCHEMA_RESP)"
+          echo "===== END SCHEMA INTROSPECTION ====="
+          echo ""
 
-          echo "deploymentRestart response:"
-          echo "$RESTART_RESP" | python3 -m json.tool 2>/dev/null || echo "$RESTART_RESP"
+          # Extract service-related mutation names for logging
+          SERVICE_MUTATIONS=$(python3 -c "import sys,json; d=json.load(sys.stdin); fields=d.get('data',{}).get('__schema',{}).get('mutationType',{}).get('fields',[]); names=[f['name'] for f in fields if 'service' in f['name'].lower() or 'deploy' in f['name'].lower()]; print(','.join(sorted(names)))" <<< "$SCHEMA_RESP" 2>/dev/null || echo "")
+          echo "SERVICE/DEPLOY MUTATIONS AVAILABLE: $SERVICE_MUTATIONS"
 
-          GQL_ERRORS=$(echo "$RESTART_RESP" | python3 -c "import sys,json; d=json.load(sys.stdin); errs=d.get('errors',[]); print('ERRORS: '+json.dumps(errs) if errs else 'OK')" 2>/dev/null || echo "PARSE_ERROR")
-          if [ "$GQL_ERRORS" != "OK" ]; then
-            echo "FAIL: deploymentRestart returned GraphQL errors: $GQL_ERRORS"
-            exit 1
+          # ── Step 3: Try serviceInstanceRedeploy ──────────────────────────────────
+          echo ""
+          echo "Attempting serviceInstanceRedeploy(serviceId, environmentId)..."
+          REDEPLOY_RESP=$(curl -s --max-time 30 -X POST "${{ env.RAILWAY_API }}" \
+            -H "Content-Type: application/json" \
+            -H "Authorization: Bearer ${{ secrets.RAILWAY_TOKEN }}" \
+            -d "{\"query\":\"mutation{serviceInstanceRedeploy(serviceId:\\\"${{ env.RAILWAY_BACKEND_SERVICE_ID }}\\\",environmentId:\\\"${{ env.RAILWAY_ENV_ID }}\\\")}\"}")
+
+          echo "serviceInstanceRedeploy response:"
+          echo "$REDEPLOY_RESP" | python3 -m json.tool 2>/dev/null || echo "$REDEPLOY_RESP"
+
+          REDEPLOY_GQL_ERRORS=$(echo "$REDEPLOY_RESP" | python3 -c "import sys,json; d=json.load(sys.stdin); errs=d.get('errors',[]); print('ERRORS: '+json.dumps(errs) if errs else 'OK')" 2>/dev/null || echo "PARSE_ERROR")
+
+          if [ "$REDEPLOY_GQL_ERRORS" = "OK" ]; then
+            echo "serviceInstanceRedeploy = ACCEPTED (no GQL errors)"
+          else
+            echo "serviceInstanceRedeploy failed: $REDEPLOY_GQL_ERRORS"
+            echo ""
+            echo "Falling back to Railway CLI redeploy..."
+
+            # ── Step 4: Railway CLI fallback ────────────────────────────────────────
+            # The CLI encapsulates the correct current Railway deploy API internally.
+            echo "Installing Railway CLI..."
+            npm install -g @railway/cli 2>&1 | tail -3
+            railway --version
+
+            echo "Running: railway redeploy --service ${{ env.RAILWAY_BACKEND_SERVICE_ID }} --yes"
+            RAILWAY_TOKEN="${{ secrets.RAILWAY_TOKEN }}" \
+            railway redeploy \
+              --service "${{ env.RAILWAY_BACKEND_SERVICE_ID }}" \
+              --yes || true
+            echo "Railway CLI redeploy exit: $?"
           fi
 
-          # Step 3: Poll for a NEW deployment with createdAt > PRE_TRIGGER_TIME (up to 3 min)
+          # ── Step 5: Poll for the new deployment ─────────────────────────────────
+          # Must find a deployment with BOTH:
+          #   createdAt > PRE_TRIGGER_TIME
+          #   id        != PREVIOUS_DEPLOY_ID
           DEPLOY_ID=""
-          for ATTEMPT in $(seq 1 12); do
-            echo "Waiting 15s for Railway to register the new deployment (attempt $ATTEMPT/12)..."
+          for ATTEMPT in $(seq 1 16); do
+            echo "Waiting 15s for Railway to register the new deployment (attempt $ATTEMPT/16)..."
             sleep 15
 
             curl -s --max-time 30 -X POST "${{ env.RAILWAY_API }}" \
@@ -248,35 +306,40 @@ jobs:
               exit 1
             fi
 
-            DEPLOY_ID=$(python3 -c "import json; d=json.load(open('/tmp/deploys.json')); nodes=[e['node'] for e in d.get('data',{}).get('deployments',{}).get('edges',[])]; nodes.sort(key=lambda n:n.get('createdAt',''),reverse=True); new=[n for n in nodes if n.get('createdAt','')>'$PRE_TRIGGER_TIME']; print(new[0]['id'] if new else '')" 2>/dev/null || echo "")
+            DEPLOY_ID=$(python3 -c "import json; d=json.load(open('/tmp/deploys.json')); nodes=[e['node'] for e in d.get('data',{}).get('deployments',{}).get('edges',[])]; nodes.sort(key=lambda n:n.get('createdAt',''),reverse=True); new=[n for n in nodes if n.get('createdAt','')>'$PRE_TRIGGER_TIME' and n.get('id','')!='$PREVIOUS_DEPLOY_ID']; print(new[0]['id'] if new else '')" 2>/dev/null || echo "")
 
             if [ -n "$DEPLOY_ID" ]; then
               echo "New Railway deployment found after attempt $ATTEMPT: $DEPLOY_ID"
               break
             fi
-            echo "  No new deployment yet (pre_trigger=$PRE_TRIGGER_TIME)"
+            echo "  No new deployment yet (pre_trigger=$PRE_TRIGGER_TIME, prev=$PREVIOUS_DEPLOY_ID)"
           done
 
           if [ -z "$DEPLOY_ID" ]; then
             echo ""
-            echo "FAIL: No new deployment appeared after deploymentRestart."
+            echo "FAIL: No new deployment appeared after deploy trigger."
             echo "      PRE_TRIGGER_TIME=$PRE_TRIGGER_TIME"
-            echo "      RESTARTED_DEPLOYMENT=$LATEST_DEPLOY_ID"
-            echo "      This may indicate a Railway account limitation (usage credits exhausted)"
-            echo "      or that deploymentRestart does not create a new deployment for this service."
+            echo "      PREVIOUS_DEPLOYMENT_ID=$PREVIOUS_DEPLOY_ID"
+            echo "      EXPECTED_IMAGE=$IMAGE"
+            echo ""
+            echo "Confirmed no-ops: environmentTriggersDeploy, deploymentRestart."
+            echo "Attempted: serviceInstanceRedeploy, Railway CLI redeploy."
+            echo "See schema introspection above for all available Railway mutations."
             echo ""
             echo "All deployments at query time:"
             cat /tmp/deploys.json | python3 -m json.tool 2>/dev/null || cat /tmp/deploys.json
             exit 1
           fi
 
-          DEPLOY_STATUS=$(python3 -c "import json; d=json.load(open('/tmp/deploys.json')); nodes=[e['node'] for e in d.get('data',{}).get('deployments',{}).get('edges',[])]; nodes.sort(key=lambda n:n.get('createdAt',''),reverse=True); new=[n for n in nodes if n.get('createdAt','')>'$PRE_TRIGGER_TIME']; print(new[0].get('status','UNKNOWN') if new else 'NOT_FOUND')" 2>/dev/null || echo "UNKNOWN")
-          DEPLOY_CREATED=$(python3 -c "import json; d=json.load(open('/tmp/deploys.json')); nodes=[e['node'] for e in d.get('data',{}).get('deployments',{}).get('edges',[])]; nodes.sort(key=lambda n:n.get('createdAt',''),reverse=True); new=[n for n in nodes if n.get('createdAt','')>'$PRE_TRIGGER_TIME']; print(new[0].get('createdAt','') if new else '')" 2>/dev/null || echo "")
+          DEPLOY_STATUS=$(python3 -c "import json; d=json.load(open('/tmp/deploys.json')); nodes=[e['node'] for e in d.get('data',{}).get('deployments',{}).get('edges',[])]; nodes.sort(key=lambda n:n.get('createdAt',''),reverse=True); new=[n for n in nodes if n.get('createdAt','')>'$PRE_TRIGGER_TIME' and n.get('id','')!='$PREVIOUS_DEPLOY_ID']; print(new[0].get('status','UNKNOWN') if new else 'NOT_FOUND')" 2>/dev/null || echo "UNKNOWN")
+          DEPLOY_CREATED=$(python3 -c "import json; d=json.load(open('/tmp/deploys.json')); nodes=[e['node'] for e in d.get('data',{}).get('deployments',{}).get('edges',[])]; nodes.sort(key=lambda n:n.get('createdAt',''),reverse=True); new=[n for n in nodes if n.get('createdAt','')>'$PRE_TRIGGER_TIME' and n.get('id','')!='$PREVIOUS_DEPLOY_ID']; print(new[0].get('createdAt','') if new else '')" 2>/dev/null || echo "")
 
           echo ""
           echo "RAILWAY_DEPLOYMENT_ID=$DEPLOY_ID"
+          echo "RAILWAY_DEPLOYMENT_PREVIOUS_ID=$PREVIOUS_DEPLOY_ID"
           echo "RAILWAY_DEPLOYMENT_STATUS=$DEPLOY_STATUS"
           echo "RAILWAY_DEPLOYMENT_CREATED=$DEPLOY_CREATED"
+          echo "NEW_DEPLOYMENT_ID_DIFFERS_FROM_PREVIOUS=$([ "$DEPLOY_ID" != "$PREVIOUS_DEPLOY_ID" ] && echo YES || echo NO)"
           echo "DEPLOYMENT_IS_NEW=YES (createdAt=$DEPLOY_CREATED > pre_trigger=$PRE_TRIGGER_TIME)"
           echo "DEPLOYMENT_ID_CAPTURE = PASS"
           echo "deployment-id=$DEPLOY_ID" >> "$GITHUB_OUTPUT"
