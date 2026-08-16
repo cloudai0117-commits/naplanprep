@@ -123,6 +123,19 @@ public class ExamService {
             userId, examId, ExamSession.SessionStatus.IN_PROGRESS);
         if (existing.isPresent()) {
             ExamSession resume = existing.get();
+            // Backfill currentTestletId for sessions created before testlet-aware initialization.
+            // Without this, getSessionQuestions falls through to the unfiltered 128-question path.
+            if (Boolean.TRUE.equals(resume.getHasSnapshot()) && resume.getCurrentTestletId() == null) {
+                List<SessionQuestionSnapshot> snaps =
+                    snapshotRepository.findByIdSessionIdOrderByQuestionOrder(resume.getId());
+                if (!snaps.isEmpty() && snaps.get(0).getTestletId() != null) {
+                    resume.setCurrentTestletId(snaps.get(0).getTestletId());
+                    if (resume.getQuestionPath() == null || resume.getQuestionPath().isEmpty()) {
+                        resume.setQuestionPath(new ArrayList<>(List.of(snaps.get(0).getTestletId())));
+                    }
+                    sessionRepository.save(resume);
+                }
+            }
             auditLogService.log(AuditLog.EXAM_RESUMED, userId, resume.getId(), "idempotent-start");
             return buildStartResponse(resume, examId);
         }

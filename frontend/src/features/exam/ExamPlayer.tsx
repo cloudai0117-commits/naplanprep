@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import apiClient from '@/api/client'
 import { audioMimeType } from '@/utils/audioMimeType'
+import { shortAnswerPlaceholder, showSpellingHint } from '@/utils/examPlayerUtils'
 
 // Simple 4-operation calculator widget for permitted questions.
 // Rendered only when the current question's calculatorAllowed === true (server-authoritative).
@@ -353,12 +354,14 @@ export default function ExamPlayer() {
                       autoCapitalize="off"
                       spellCheck={false}
                       data-testid="short-answer-input"
-                      placeholder="Type the missing word here"
+                      placeholder={shortAnswerPlaceholder(currentQuestion.domain)}
                       value={answers[currentQuestionId] || ''}
                       onChange={(e) => handleAnswer(currentQuestionId, e.target.value)}
                       className="w-full border-2 border-gray-300 rounded-lg px-4 py-3 text-lg font-medium text-gray-800 focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-200 transition-colors"
                     />
-                    <p className="mt-2 text-xs text-gray-500">Type one word. Spelling counts.</p>
+                    {showSpellingHint(currentQuestion.domain) && (
+                      <p className="mt-2 text-xs text-gray-500">Type one word. Spelling counts.</p>
+                    )}
                   </div>
                 ) : Array.isArray(currentQuestion.options) && currentQuestion.options.length > 0 && (
                   <div className="space-y-2" data-testid="options-list">

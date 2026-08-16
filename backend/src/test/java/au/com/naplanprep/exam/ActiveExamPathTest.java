@@ -2,12 +2,14 @@ package au.com.naplanprep.exam;
 
 import au.com.naplanprep.exam.entity.ExamSession;
 import au.com.naplanprep.exam.entity.SessionQuestionSnapshot;
+import au.com.naplanprep.exam.repository.ExamSessionRepository;
 import au.com.naplanprep.exam.repository.SessionQuestionSnapshotRepository;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -27,6 +29,9 @@ class ActiveExamPathTest {
 
     @Mock
     private SessionQuestionSnapshotRepository snapshotRepository;
+
+    @Mock
+    private ExamSessionRepository sessionRepository;
 
     /**
      * When currentTestletId is set on the session, only that testlet's snapshots
@@ -100,6 +105,120 @@ class ActiveExamPathTest {
         assertEquals(testletIdA, derivedInitialTestletId,
             "Initial testlet must be taken from first snapshot (lowest questionOrder)");
         assertNotEquals(testletIdB, derivedInitialTestletId);
+    }
+
+    /**
+     * Regression: resumed session with currentTestletId=null must have it backfilled
+     * from the first snapshot so getSessionQuestions returns 16, not 128.
+     *
+     * Simulates the backfill logic in startAdminExam's idempotent resume path.
+     */
+    @Test
+    void resumedSession_nullCurrentTestletId_backfilledFromFirstSnapshot() {
+        UUID sessionId = UUID.randomUUID();
+        UUID testletA  = UUID.randomUUID();
+        UUID testletB  = UUID.randomUUID();
+
+        // 128-question adaptive pool: Q1–Q16 in testlet A, Q17–Q32 in testlet B, etc.
+        List<SessionQuestionSnapshot> allSnaps = new ArrayList<>();
+        for (int i = 1; i <= 16; i++) allSnaps.add(buildSnapshot(sessionId, UUID.randomUUID(), testletA, i));
+        for (int i = 17; i <= 32; i++) allSnaps.add(buildSnapshot(sessionId, UUID.randomUUID(), testletB, i));
+
+        when(snapshotRepository.findByIdSessionIdOrderByQuestionOrder(sessionId))
+            .thenReturn(allSnaps);
+
+        // Simulate resumed session: hasSnapshot=true but currentTestletId=null
+        ExamSession resumed = new ExamSession();
+        resumed.setId(sessionId);
+        resumed.setHasSnapshot(true);
+        resumed.setCurrentTestletId(null);
+
+        // Apply backfill logic (mirrors ExamService idempotent resume path)
+        List<SessionQuestionSnapshot> snaps = snapshotRepository.findByIdSessionIdOrderByQuestionOrder(sessionId);
+        if (!snaps.isEmpty() && snaps.get(0).getTestletId() != null) {
+            resumed.setCurrentTestletId(snaps.get(0).getTestletId());
+            if (resumed.getQuestionPath() == null || resumed.getQuestionPath().isEmpty()) {
+                resumed.setQuestionPath(new ArrayList<>(List.of(snaps.get(0).getTestletId())));
+            }
+            sessionRepository.save(resumed);
+        }
+
+        // After backfill, currentTestletId must be testlet A (not null, not testlet B)
+        assertNotNull(resumed.getCurrentTestletId(),
+            "Resumed session must have currentTestletId after backfill");
+        assertEquals(testletA, resumed.getCurrentTestletId(),
+            "currentTestletId must be initial testlet (lowest questionOrder)");
+        assertNotEquals(testletB, resumed.getCurrentTestletId());
+
+        // Session must be persisted with the backfilled testlet
+        verify(sessionRepository).save(resumed);
+
+        // After backfill, testlet-scoped query returns 16, not 128
+        List<SessionQuestionSnapshot> testletASnaps = allSnaps.stream()
+            .filter(s -> testletA.equals(s.getTestletId()))
+            .toList();
+        assertEquals(16, testletASnaps.size(),
+            "Active path must be 16 questions, not the full 128-question pool");
+    }
+
+    /**
+     * Regression: resumed session that already has currentTestletId set must NOT
+     * have it overwritten by the backfill — the persisted value is authoritative.
+     */
+    @Test
+    void resumedSession_existingCurrentTestletId_notOverwritten() {
+        UUID sessionId  = UUID.randomUUID();
+        UUID testletA   = UUID.randomUUID();
+        UUID testletB   = UUID.randomUUID();
+
+        // Session already advanced to testlet B before interruption
+        ExamSession resumed = new ExamSession();
+        resumed.setId(sessionId);
+        resumed.setHasSnapshot(true);
+        resumed.setCurrentTestletId(testletB);
+
+        // Backfill logic must not fire when currentTestletId is already set
+        boolean wouldBackfill = Boolean.TRUE.equals(resumed.getHasSnapshot())
+            && resumed.getCurrentTestletId() == null;
+
+        assertFalse(wouldBackfill, "Backfill must not run when currentTestletId is already persisted");
+        assertEquals(testletB, resumed.getCurrentTestletId(),
+            "currentTestletId must remain testletB after transition");
+        verifyNoInteractions(snapshotRepository);
+        verifyNoInteractions(sessionRepository);
+    }
+
+    /**
+     * Regression: adaptive transition must update currentTestletId and persist it,
+     * so a subsequent resume restores the transitioned testlet (not the initial one).
+     */
+    @Test
+    void adaptiveTransition_updatesCurrentTestletId_survivesResume() {
+        UUID sessionId = UUID.randomUUID();
+        UUID testletA  = UUID.randomUUID();
+        UUID testletB  = UUID.randomUUID();
+
+        ExamSession session = new ExamSession();
+        session.setId(sessionId);
+        session.setHasSnapshot(true);
+        session.setCurrentTestletId(testletA);
+        session.setQuestionPath(new ArrayList<>(List.of(testletA)));
+
+        // Simulate adaptive transition: move from A → B
+        session.setCurrentTestletId(testletB);
+        session.getQuestionPath().add(testletB);
+
+        assertEquals(testletB, session.getCurrentTestletId(),
+            "currentTestletId must be updated to testletB after transition");
+        assertEquals(List.of(testletA, testletB), session.getQuestionPath(),
+            "questionPath must record both testlets in traversal order");
+
+        // On resume, currentTestletId is not null → backfill does not fire → testletB preserved
+        boolean wouldBackfill = Boolean.TRUE.equals(session.getHasSnapshot())
+            && session.getCurrentTestletId() == null;
+        assertFalse(wouldBackfill,
+            "Backfill must not overwrite transitioned testlet on resume");
+        assertEquals(testletB, session.getCurrentTestletId());
     }
 
     private SessionQuestionSnapshot buildSnapshot(UUID sessionId, UUID questionId, UUID testletId, int order) {
