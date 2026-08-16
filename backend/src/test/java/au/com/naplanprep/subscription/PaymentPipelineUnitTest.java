@@ -4,6 +4,7 @@ import au.com.naplanprep.auth.entity.User;
 import au.com.naplanprep.auth.repository.UserRepository;
 import au.com.naplanprep.config.AppProperties;
 import au.com.naplanprep.exam.entity.PackageType;
+import org.springframework.core.env.Environment;
 import au.com.naplanprep.subscription.entity.Plan;
 import au.com.naplanprep.subscription.entity.Subscription;
 import au.com.naplanprep.subscription.repository.PlanRepository;
@@ -46,6 +47,7 @@ class PaymentPipelineUnitTest {
     @Mock private UserRepository userRepository;
     @Mock private AppProperties appProperties;
     @Mock private AppProperties.Stripe stripeProps;
+    @Mock private Environment environment;
 
     @InjectMocks
     private SubscriptionService subscriptionService;
@@ -78,6 +80,8 @@ class PaymentPipelineUnitTest {
 
         lenient().when(appProperties.getStripe()).thenReturn(stripeProps);
         lenient().when(stripeProps.getWebhookSecret()).thenReturn("whsec_dummy");
+        // The webhook tests rely on "dev" profile skip behaviour for the dummy secret.
+        lenient().when(environment.getActiveProfiles()).thenReturn(new String[]{"dev"});
     }
 
     // ─────────────────────────────────────────────────────────────────────────

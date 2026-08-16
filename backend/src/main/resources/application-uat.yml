@@ -1,7 +1,9 @@
+server:
+  forward-headers-strategy: NATIVE
+
 spring:
   flyway:
-    validate-on-migrate: false
-    out-of-order: true
+    out-of-order: false
   jpa:
     hibernate:
       ddl-auto: none
@@ -33,10 +35,6 @@ management:
     web:
       exposure:
         include: health,info,metrics
-  endpoint:
-    health:
-      show-details: always
-      show-components: always
 
 logging:
   level:

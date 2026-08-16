@@ -1,103 +1,119 @@
 package au.com.naplanprep.config;
 
-import io.github.bucket4j.Bandwidth;
-import io.github.bucket4j.Bucket;
-import io.github.bucket4j.Refill;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Component;
 import org.springframework.web.servlet.HandlerInterceptor;
 
 import java.time.Duration;
-import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * Bucket4j in-memory rate limiter applied to exam and auth endpoints.
+ * Redis-backed rate limiter using a fixed-window counter (INCR + EXPIRE).
  *
- * Limits are per IP address. Each endpoint group has its own bucket capacity
- * so that answer-save (high frequency) does not exhaust the exam-start budget.
+ * State is shared across all application pods via Redis, so the limit is
+ * enforced cluster-wide rather than per-instance.
  *
- * For production at scale, replace the in-memory store with a Redis-backed
- * ProxyManager (Bucket4j-Redis or Caffeine+Redis) to share state across pods.
+ * Client IP is read from {@code request.getRemoteAddr()}. When the app is
+ * deployed behind a trusted reverse proxy (Railway UAT/prod), Spring's
+ * {@code server.forward-headers-strategy=NATIVE} rewrites RemoteAddr from
+ * X-Forwarded-For before this interceptor runs, giving the actual client IP.
+ * Attacker-injected X-Forwarded-For headers that arrive before the proxy's
+ * own entry are stripped by Tomcat's RemoteIpValve — the interceptor never
+ * sees them.
+ *
+ * Redis failure: the interceptor falls through and allows the request,
+ * logging an error. This trades a narrow availability window (requests allowed
+ * during Redis outage) against a hard unavailability (all requests blocked).
+ * The accepted risk is documented in P2-006 / P2-002.
  *
  * Endpoint groups:
- *   EXAM_START   — 10 starts per 10 minutes (prevents session flooding)
- *   EXAM_OPS     — 200 ops per minute (answer saves, flags, testlet transitions)
- *   AUTH         — 20 attempts per minute (login/register brute-force guard)
+ *   EXAM_START  — 10 starts per 10 minutes
+ *   EXAM_OPS    — 200 ops per minute
+ *   AUTH        — 20 attempts per minute
+ *   WEBHOOK     — 100 requests per minute (abuse guard; Stripe signature is authoritative)
  */
 @Slf4j
 @Component
+@RequiredArgsConstructor
 public class RateLimitInterceptor implements HandlerInterceptor {
 
-    // ── Buckets keyed by "group:ip" ───────────────────────────────
-    private final Map<String, Bucket> buckets = new ConcurrentHashMap<>();
+    private final StringRedisTemplate stringRedisTemplate;
 
     @Override
     public boolean preHandle(HttpServletRequest request, HttpServletResponse response, Object handler)
             throws Exception {
 
-        String ip   = extractClientIp(request);
+        String ip = request.getRemoteAddr();
         String path = request.getRequestURI();
         String method = request.getMethod();
 
         BucketGroup group = classify(path, method);
         if (group == null) {
-            return true; // not a rate-limited endpoint
-        }
-
-        Bucket bucket = buckets.computeIfAbsent(group.name() + ":" + ip, k -> newBucket(group));
-
-        if (bucket.tryConsume(1)) {
             return true;
         }
 
-        log.warn("Rate limit exceeded: ip={} group={} path={}", ip, group, path);
-        response.setStatus(HttpStatus.TOO_MANY_REQUESTS.value());
-        response.setContentType("application/json");
-        response.getWriter().write("{\"error\":\"Rate limit exceeded. Please wait before retrying.\"}");
-        return false;
+        try {
+            long count = increment(group, ip);
+            if (count > group.limit) {
+                log.warn("RATE_LIMIT_EXCEEDED ip={} group={} path={} count={}", ip, group, path, count);
+                response.setStatus(HttpStatus.TOO_MANY_REQUESTS.value());
+                response.setContentType("application/json");
+                response.getWriter().write("{\"error\":\"Rate limit exceeded. Please wait before retrying.\"}");
+                return false;
+            }
+        } catch (Exception e) {
+            log.error("RATE_LIMIT_REDIS_ERROR — Redis unavailable, allowing request: {}", e.getMessage());
+        }
+
+        return true;
     }
 
     private BucketGroup classify(String path, String method) {
-        // Auth endpoints: /v1/auth/**
         if (path.startsWith("/v1/auth/")) return BucketGroup.AUTH;
-        // Exam start: POST /v1/exams/{id}/start or POST /v1/exams/sessions
+        if ("/v1/subscriptions/webhooks/stripe".equals(path) && "POST".equals(method)) return BucketGroup.WEBHOOK;
         if ("POST".equals(method) && (path.matches(".*/exams/[^/]+/start") || path.matches(".*/exams/sessions"))) {
             return BucketGroup.EXAM_START;
         }
-        // Exam operations: POST/PUT on session sub-resources (answer, submit, flag, testlet)
         if (path.contains("/exams/sessions/") && ("POST".equals(method) || "PUT".equals(method))) {
             return BucketGroup.EXAM_OPS;
         }
         return null;
     }
 
-    private Bucket newBucket(BucketGroup group) {
-        return switch (group) {
-            case EXAM_START -> Bucket.builder()
-                .addLimit(Bandwidth.classic(10, Refill.intervally(10, Duration.ofMinutes(10))))
-                .build();
-            case EXAM_OPS -> Bucket.builder()
-                .addLimit(Bandwidth.classic(200, Refill.intervally(200, Duration.ofMinutes(1))))
-                .build();
-            case AUTH -> Bucket.builder()
-                .addLimit(Bandwidth.classic(20, Refill.intervally(20, Duration.ofMinutes(1))))
-                .build();
-        };
-    }
+    /**
+     * Atomically increments the fixed-window counter for this group+IP and returns the new count.
+     * The window key changes every {@code windowSeconds}, so old counters expire naturally.
+     */
+    private long increment(BucketGroup group, String ip) {
+        long windowId = System.currentTimeMillis() / (group.windowSeconds * 1000L);
+        String key = "ratelimit:" + group.name() + ":" + ip + ":" + windowId;
 
-    private String extractClientIp(HttpServletRequest request) {
-        String xff = request.getHeader("X-Forwarded-For");
-        if (xff != null && !xff.isBlank()) {
-            return xff.split(",")[0].trim();
+        Long count = stringRedisTemplate.opsForValue().increment(key);
+        if (count == null) count = 1L;
+        if (count == 1L) {
+            // First hit in this window — set TTL so the key is cleaned up automatically.
+            // TTL is window + 1 s to avoid a race where the key expires at the exact window boundary.
+            stringRedisTemplate.expire(key, Duration.ofSeconds(group.windowSeconds + 1));
         }
-        return request.getRemoteAddr();
+        return count;
     }
 
     private enum BucketGroup {
-        EXAM_START, EXAM_OPS, AUTH
+        EXAM_START(10,  600),   // 10 per 10 min
+        EXAM_OPS  (200, 60),    // 200 per minute
+        AUTH      (20,  60),    // 20 per minute
+        WEBHOOK   (100, 60);    // 100 per minute
+
+        final long limit;
+        final long windowSeconds;
+
+        BucketGroup(long limit, long windowSeconds) {
+            this.limit = limit;
+            this.windowSeconds = windowSeconds;
+        }
     }
 }

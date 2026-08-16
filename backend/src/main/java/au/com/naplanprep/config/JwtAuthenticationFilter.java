@@ -48,10 +48,20 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                 return;
             }
 
-            String blacklistKey = "blacklist:" + token;
-            if (Boolean.TRUE.equals(redisTemplate.hasKey(blacklistKey))) {
-                filterChain.doFilter(request, response);
-                return;
+            // Redis blacklist check: if Redis is unavailable we allow the request
+            // and accept the narrow risk that a recently-revoked token is valid for
+            // the duration of the outage. JWT cryptographic validity is always checked
+            // above; only the revocation layer is skipped. This is intentional — a
+            // Redis outage must not convert to a platform-wide 401 storm.
+            try {
+                String blacklistKey = "blacklist:" + token;
+                if (Boolean.TRUE.equals(redisTemplate.hasKey(blacklistKey))) {
+                    filterChain.doFilter(request, response);
+                    return;
+                }
+            } catch (Exception redisEx) {
+                log.error("JWT_BLACKLIST_REDIS_ERROR — Redis unavailable; proceeding without blacklist check: {}",
+                    redisEx.getMessage());
             }
 
             String userId = jwtTokenProvider.getSubject(token);

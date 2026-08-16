@@ -1,4 +1,6 @@
 spring:
+  flyway:
+    repair-on-migrate: true
   datasource:
     url: jdbc:postgresql://localhost:5432/naplanprep_dev
     username: postgres
@@ -13,6 +15,17 @@ spring:
       timeout: 2000ms
   jpa:
     show-sql: true
+
+server:
+  error:
+    include-message: always
+    include-binding-errors: always
+
+management:
+  endpoint:
+    health:
+      show-details: always
+      show-components: always
 
 logging:
   level:
