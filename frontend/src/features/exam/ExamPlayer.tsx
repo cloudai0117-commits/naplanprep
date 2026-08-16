@@ -225,9 +225,7 @@ export default function ExamPlayer() {
   }
 
   const answeredCount = Object.keys(answers).length
-  // NAPLAN Spelling has a pool of 43 questions (S1+S2A+S2B+S3A+S3B) but the student
-  // path is always 25 (7+9+9 through one branch). Show 25 for display purposes.
-  const displayTotal = session?.domain === 'SPELLING' ? 25 : questions.length
+  const displayTotal = session?.studentTestLength ?? questions.length
   const progress = displayTotal > 0 ? (answeredCount / displayTotal) * 100 : 0
 
   return (

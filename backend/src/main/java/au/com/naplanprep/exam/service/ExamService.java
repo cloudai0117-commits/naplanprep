@@ -136,6 +136,27 @@ public class ExamService {
                     sessionRepository.save(resume);
                 }
             }
+            // Retroactively create snapshots for sessions started before snapshot-based initialization
+            // was introduced. Without snapshots the flat path returns all pool questions (e.g. 112
+            // for Y5 Numeracy) instead of the current testlet's 14 questions.
+            if (!Boolean.TRUE.equals(resume.getHasSnapshot())) {
+                List<SessionQuestionSnapshot> existingSnaps =
+                    snapshotRepository.findByIdSessionIdOrderByQuestionOrder(resume.getId());
+                if (existingSnaps.isEmpty()) {
+                    snapshotService.createSnapshots(resume); // sets hasSnapshot = true in memory
+                } else {
+                    resume.setHasSnapshot(true); // snapshots exist but flag wasn't persisted (crash window)
+                }
+                List<SessionQuestionSnapshot> snaps =
+                    snapshotRepository.findByIdSessionIdOrderByQuestionOrder(resume.getId());
+                if (!snaps.isEmpty() && snaps.get(0).getTestletId() != null) {
+                    resume.setCurrentTestletId(snaps.get(0).getTestletId());
+                    if (resume.getQuestionPath() == null || resume.getQuestionPath().isEmpty()) {
+                        resume.setQuestionPath(new ArrayList<>(List.of(snaps.get(0).getTestletId())));
+                    }
+                }
+                sessionRepository.save(resume);
+            }
             auditLogService.log(AuditLog.EXAM_RESUMED, userId, resume.getId(), "idempotent-start");
             return buildStartResponse(resume, examId);
         }
@@ -258,6 +279,13 @@ public class ExamService {
             sessionRepository.save(session);
             calculateAndSaveResult(session);
             auditLogService.log(AuditLog.EXAM_TIMED_OUT, userId, sessionId);
+        }
+        // Enrich transient display fields from the linked exam
+        if (session.getExamId() != null) {
+            examRepository.findById(session.getExamId()).ifPresent(exam -> {
+                session.setStudentTestLength(exam.getStudentTestLength());
+                session.setExamTitle(exam.getTitle());
+            });
         }
         return session;
     }

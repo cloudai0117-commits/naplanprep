@@ -125,6 +125,14 @@ public class ExamSession {
     @Column(nullable = false, updatable = false)
     private Instant createdAt;
 
+    // ── Enriched response fields (transient — not persisted) ──────
+    /** Populated at read time from the linked Exam entity. Exposed to the client. */
+    @jakarta.persistence.Transient
+    private Integer studentTestLength;
+
+    @jakarta.persistence.Transient
+    private String examTitle;
+
     // ── Enums ─────────────────────────────────────────────────────
 
     public enum ExamType {
