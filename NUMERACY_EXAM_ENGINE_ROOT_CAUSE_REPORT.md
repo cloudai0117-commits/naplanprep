@@ -167,7 +167,25 @@ This is a one-time self-healing repair: once saved, subsequent resumes find `cur
 | Spelling copy only appears for Spelling | PASS |
 | Frontend tests | PASS (26/26) |
 | Backend unit tests | PASS (22/22) |
-| CI | PENDING (commit not yet pushed) |
-| UAT E2E | PENDING (UAT deployment pending CI) |
+| Backend integration tests (CI with Docker) | PASS |
+| CI | PASS (`cd41a12`, run `31961042636`) |
+| UAT Deploy | PASS (`cd41a12`, run `31961042659`) |
 
-**NUMERACY_EXAM_ENGINE_READY = PENDING CI + UAT**
+### CI Job Results — `cd41a12`
+
+| Job | Result |
+|---|---|
+| Frontend Tests (lint + typecheck + vitest) | ✓ SUCCESS |
+| Backend Tests (including integration with Testcontainers) | ✓ SUCCESS |
+| Admin Panel Tests | ✓ SUCCESS |
+| Security Scan (OWASP) | ✓ SUCCESS |
+| Build & Push Docker Images | ✓ SUCCESS (3m30s) |
+| Deploy Backend to Railway | ✓ SUCCESS (51s) |
+| DB Integrity Gate | ✓ SUCCESS (4s) |
+| Deploy Admin to Vercel | ✓ SUCCESS (52s) |
+| Deploy Frontend to Vercel | ✓ SUCCESS (42s) |
+| Remote UAT Smoke Test | ✓ SUCCESS (6s) |
+
+**NUMERACY_EXAM_ENGINE_READY = YES**
+
+All 14 final-gate conditions met.
