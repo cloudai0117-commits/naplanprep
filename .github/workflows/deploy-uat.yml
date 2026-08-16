@@ -177,11 +177,20 @@ jobs:
 
       - name: Trigger Railway deployment
         id: trigger-deploy
-        # Triggers a new deployment using the image just set above.
-        # Captures the deployment ID for status polling.
+        # Triggers a new deployment using the image set in the previous step.
+        # Records PRE_TRIGGER_TIME before calling environmentTriggersDeploy so we can
+        # identify the NEW deployment by filtering to createdAt > PRE_TRIGGER_TIME.
+        # Railway's deployments API returns oldest-first; edges[0] is NOT the newest —
+        # always sort descending and filter by timestamp to avoid capturing a stale
+        # already-SUCCESS deployment as the "current" one.
         run: |
           TAG="${{ needs.build-and-push.outputs.image-tag }}"
           IMAGE="${{ env.BACKEND_IMAGE }}:$TAG"
+
+          # Record timestamp BEFORE triggering — used to identify the NEW deployment.
+          PRE_TRIGGER_TIME=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+          echo "PRE_TRIGGER_TIME=$PRE_TRIGGER_TIME"
+          echo "EXPECTED_IMAGE=$IMAGE"
 
           TRIGGER_RESP=$(curl -s --max-time 30 -X POST "${{ env.RAILWAY_API }}" \
             -H "Content-Type: application/json" \
@@ -192,70 +201,87 @@ jobs:
           echo "$TRIGGER_RESP" | python3 -m json.tool 2>/dev/null || echo "$TRIGGER_RESP"
 
           GQL_ERRORS=$(echo "$TRIGGER_RESP" | python3 -c "import sys,json; d=json.load(sys.stdin); errs=d.get('errors',[]); print('ERRORS: '+json.dumps(errs) if errs else 'OK')" 2>/dev/null || echo "PARSE_ERROR")
-
           if [ "$GQL_ERRORS" != "OK" ]; then
             echo "FAIL: environmentTriggersDeploy returned GraphQL errors: $GQL_ERRORS"
             exit 1
           fi
 
-          # Give Railway ~15s to register the deployment in its API
-          echo "Waiting 15s for Railway to register the new deployment..."
-          sleep 15
+          # Poll for a NEW deployment with createdAt > PRE_TRIGGER_TIME.
+          # Retry up to 12 × 15s = 3 minutes to handle Railway registration delay.
+          # NOTE: Railway's deployments API returns oldest-first; sort descending client-side.
+          DEPLOY_ID=""
+          for ATTEMPT in $(seq 1 12); do
+            echo "Waiting 15s for Railway to register the new deployment (attempt $ATTEMPT/12)..."
+            sleep 15
 
-          # Query for the latest deployment on this service.
-          # NOTE: Deployment.image does NOT exist in Railway's current GraphQL schema.
-          # We query only confirmed fields: id, status, createdAt.
-          curl -s --max-time 30 -X POST "${{ env.RAILWAY_API }}" \
-            -H "Content-Type: application/json" \
-            -H "Authorization: Bearer ${{ secrets.RAILWAY_TOKEN }}" \
-            -d "{\"query\":\"{deployments(input:{serviceId:\\\"${{ env.RAILWAY_BACKEND_SERVICE_ID }}\\\",environmentId:\\\"${{ env.RAILWAY_ENV_ID }}\\\"}){edges{node{id status createdAt}}}}\"}" \
-            > /tmp/deploys.json
+            curl -s --max-time 30 -X POST "${{ env.RAILWAY_API }}" \
+              -H "Content-Type: application/json" \
+              -H "Authorization: Bearer ${{ secrets.RAILWAY_TOKEN }}" \
+              -d "{\"query\":\"{deployments(input:{serviceId:\\\"${{ env.RAILWAY_BACKEND_SERVICE_ID }}\\\",environmentId:\\\"${{ env.RAILWAY_ENV_ID }}\\\"}){edges{node{id status createdAt}}}}\"}" \
+              > /tmp/deploys.json
 
-          echo "Deployments query response:"
-          cat /tmp/deploys.json | python3 -m json.tool 2>/dev/null || cat /tmp/deploys.json
+            # Check for GraphQL errors before parsing
+            DEPLOYS_GQL_ERRORS=$(python3 -c "import sys,json; d=json.load(open('/tmp/deploys.json')); errs=d.get('errors',[]); print('ERRORS: '+json.dumps(errs) if errs else 'OK')" 2>/dev/null || echo "PARSE_ERROR")
+            if [ "$DEPLOYS_GQL_ERRORS" != "OK" ]; then
+              echo "RAILWAY_GRAPHQL_ERROR: deployments query returned errors: $DEPLOYS_GQL_ERRORS"
+              exit 1
+            fi
 
-          # Check for GraphQL errors BEFORE attempting to parse deployment data.
-          # A GraphQL validation error (e.g. unknown field) returns HTTP 200 with an
-          # errors array — it must be caught here, not misreported as "no deployments".
-          DEPLOYS_GQL_ERRORS=$(python3 -c "import sys,json; d=json.load(open('/tmp/deploys.json')); errs=d.get('errors',[]); print('ERRORS: '+json.dumps(errs) if errs else 'OK')" 2>/dev/null || echo "PARSE_ERROR")
-          if [ "$DEPLOYS_GQL_ERRORS" != "OK" ]; then
-            echo "RAILWAY_GRAPHQL_ERROR: deployments query returned errors"
-            echo "$DEPLOYS_GQL_ERRORS"
-            echo "Check the Railway GraphQL schema — do not query unsupported fields."
+            # Find the newest deployment with createdAt > PRE_TRIGGER_TIME
+            DEPLOY_ID=$(python3 -c "
+import json
+d = json.load(open('/tmp/deploys.json'))
+nodes = [e['node'] for e in d.get('data',{}).get('deployments',{}).get('edges',[])]
+nodes.sort(key=lambda n: n.get('createdAt',''), reverse=True)
+new = [n for n in nodes if n.get('createdAt','') > '$PRE_TRIGGER_TIME']
+print(new[0]['id'] if new else '')
+" 2>/dev/null || echo "")
+
+            if [ -n "$DEPLOY_ID" ]; then
+              echo "New Railway deployment found after attempt $ATTEMPT: $DEPLOY_ID"
+              break
+            fi
+            echo "  No new deployment yet (pre_trigger=$PRE_TRIGGER_TIME) — retrying..."
+          done
+
+          if [ -z "$DEPLOY_ID" ]; then
+            echo ""
+            echo "FAIL: Railway did not register a new deployment within 3 minutes."
+            echo "      PRE_TRIGGER_TIME=$PRE_TRIGGER_TIME"
+            echo "      All existing deployments are older than the trigger time."
+            echo "      The serviceInstanceUpdate may have failed silently, or Railway"
+            echo "      did not process the environmentTriggersDeploy call."
+            echo ""
+            echo "All deployments at query time:"
+            cat /tmp/deploys.json | python3 -m json.tool 2>/dev/null || cat /tmp/deploys.json
             exit 1
           fi
 
-          # Extract deployment ID; write to GITHUB_OUTPUT
-          # Image verification is done at GHCR (digest from build step), not via Railway API.
-          python3 - "$GITHUB_OUTPUT" << 'PYEOF'
-          import sys, json
-          output_file = sys.argv[1]
-          with open('/tmp/deploys.json') as f:
-              try:
-                  d = json.load(f)
-              except Exception as e:
-                  print(f"PARSE_ERROR reading /tmp/deploys.json: {e}")
-                  sys.exit(1)
-          edges = d.get('data', {}).get('deployments', {}).get('edges', [])
-          if not edges:
-              print("FAIL: No deployments found for this service after triggering.")
-              print("      The trigger returned true but Railway has not registered a deployment yet.")
-              print("      This can happen if the service source was not updated before triggering.")
-              sys.exit(1)
-          latest = edges[0]['node']
-          deploy_id = latest.get('id', '')
-          deploy_status = latest.get('status', 'UNKNOWN')
-          deploy_created = latest.get('createdAt', '')
-          print(f"RAILWAY_DEPLOYMENT_ID={deploy_id}")
-          print(f"RAILWAY_DEPLOYMENT_STATUS={deploy_status}")
-          print(f"RAILWAY_DEPLOYMENT_CREATED={deploy_created}")
-          with open(output_file, 'a') as f:
-              f.write(f"deployment-id={deploy_id}\n")
-          if not deploy_id:
-              print("FAIL: deployment id is empty")
-              sys.exit(1)
-          print("DEPLOYMENT_ID_CAPTURE = PASS")
-          PYEOF
+          # Print full diagnostics for the new deployment
+          python3 - "$GITHUB_OUTPUT" "$PRE_TRIGGER_TIME" << 'PYEOF'
+import sys, json
+output_file = sys.argv[1]
+pre_trigger = sys.argv[2]
+with open('/tmp/deploys.json') as f:
+    d = json.load(f)
+nodes = [e['node'] for e in d.get('data', {}).get('deployments', {}).get('edges', [])]
+nodes.sort(key=lambda n: n.get('createdAt', ''), reverse=True)
+new = [n for n in nodes if n.get('createdAt', '') > pre_trigger]
+latest = new[0]
+deploy_id = latest.get('id', '')
+deploy_status = latest.get('status', 'UNKNOWN')
+deploy_created = latest.get('createdAt', '')
+print(f"RAILWAY_DEPLOYMENT_ID={deploy_id}")
+print(f"RAILWAY_DEPLOYMENT_STATUS={deploy_status}")
+print(f"RAILWAY_DEPLOYMENT_CREATED={deploy_created}")
+print(f"DEPLOYMENT_IS_NEW=YES (createdAt={deploy_created} > pre_trigger={pre_trigger})")
+with open(output_file, 'a') as f:
+    f.write(f"deployment-id={deploy_id}\n")
+if not deploy_id:
+    print("FAIL: deployment id is empty")
+    sys.exit(1)
+print("DEPLOYMENT_ID_CAPTURE = PASS")
+PYEOF
 
       - name: Poll Railway deployment status until ACTIVE/SUCCESS
         # Do not health-poll until Railway itself says the deployment is done.
