@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import apiClient from '@/api/client'
+import { audioMimeType } from '@/utils/audioMimeType'
 
 // Simple 4-operation calculator widget for permitted questions.
 // Rendered only when the current question's calculatorAllowed === true (server-authoritative).
@@ -318,7 +319,7 @@ export default function ExamPlayer() {
                           className="w-full"
                           aria-label="Listen to the word to spell"
                         >
-                          <source src={currentQuestion.audioUrl} type="audio/mpeg" />
+                          <source src={currentQuestion.audioUrl} type={audioMimeType(currentQuestion.audioUrl)} />
                         </audio>
                         <p className="mt-1 text-xs text-gray-500">
                           Listen to the audio, then type the correct spelling below.
