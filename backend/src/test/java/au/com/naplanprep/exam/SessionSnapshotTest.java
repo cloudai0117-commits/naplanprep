@@ -210,6 +210,107 @@ class SessionSnapshotTest {
         assertThat(saved.get(1).getSnapshot().get("calculatorAllowed")).isEqualTo(true);
     }
 
+    // ── TASK 16: Missing audio/transcript tests ───────────────────
+
+    @Test
+    void snapshot_transcriptExcluded_fromAudioStimulusQuestion() {
+        UUID sessionId = UUID.randomUUID();
+        UUID examId    = UUID.randomUUID();
+
+        ExamSession session = ExamSession.builder()
+            .id(sessionId).examId(examId).hasSnapshot(false)
+            .questionIds(List.of()).flaggedQuestions(List.of())
+            .questionPath(List.of()).answerCount(0).build();
+
+        // Shared AUDIO stimulus that has a transcript (admin-only field)
+        Stimulus audioStim = Stimulus.builder()
+            .id(UUID.randomUUID())
+            .stimulusType(Stimulus.StimulusType.AUDIO)
+            .title("S1_01")
+            .assetUrl("s3://naplanprep-content/audio/3/S1_01.wav")
+            .transcript("necessary")   // must NOT appear in snapshot
+            .yearLevel(3)
+            .build();
+
+        Question q = Question.builder()
+            .id(UUID.randomUUID())
+            .questionType(Question.QuestionType.AUDIO_RESPONSE)
+            .yearLevel(3)
+            .domain(Question.Domain.SPELLING)
+            .topic("Vocabulary")
+            .difficultyBand(2)
+            .marks(1)
+            .questionText("Listen and spell the word.")
+            .correctAnswer(Map.of("value", "necessary"))
+            .stimulus(audioStim)
+            .status(Question.QuestionStatus.PUBLISHED)
+            .calculatorAllowed(false)
+            .build();
+
+        ExamQuestion eq = buildExamQuestion(examId, q, 1);
+        when(examQuestionRepository.findByExamIdOrderByQuestionOrder(examId))
+            .thenReturn(List.of(eq));
+        when(snapshotRepository.saveAll(any())).thenAnswer(inv -> inv.getArgument(0));
+
+        snapshotService.createSnapshots(session);
+
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<List<SessionQuestionSnapshot>> captor = ArgumentCaptor.forClass(List.class);
+        verify(snapshotRepository).saveAll(captor.capture());
+
+        Map<String, Object> snapshot = captor.getValue().get(0).getSnapshot();
+        // transcript is NEVER included — admin-only field (ExamSnapshotService:100)
+        assertThat(snapshot).doesNotContainKey("transcript");
+        // stimulus metadata IS included (without transcript)
+        assertThat(snapshot).containsKey("stimulusId");
+        assertThat(snapshot).containsKey("stimulusContent");
+        assertThat(snapshot).doesNotContainKey("stimulusTranscript");
+    }
+
+    @Test
+    void snapshot_spellingShortAnswer_audioUrlIsNull_inSnapshot() {
+        // Verifies post-V379 state: SHORT_ANSWER Spelling question with audioUrl=null
+        // produces a snapshot with audioUrl=null (null flows through without NPE or default).
+        UUID sessionId = UUID.randomUUID();
+        UUID examId    = UUID.randomUUID();
+
+        ExamSession session = ExamSession.builder()
+            .id(sessionId).examId(examId).hasSnapshot(false)
+            .questionIds(List.of()).flaggedQuestions(List.of())
+            .questionPath(List.of()).answerCount(0).build();
+
+        Question q = Question.builder()
+            .id(UUID.randomUUID())
+            .questionType(Question.QuestionType.SHORT_ANSWER)
+            .yearLevel(3)
+            .domain(Question.Domain.SPELLING)
+            .topic("Vocabulary")
+            .difficultyBand(2)
+            .marks(1)
+            .questionText("Complete the sentence by spelling the missing word correctly.")
+            .correctAnswer(Map.of("value", "necessary"))
+            .audioUrl(null)   // V379 sets this to NULL for all converted questions
+            .status(Question.QuestionStatus.PUBLISHED)
+            .calculatorAllowed(false)
+            .build();
+
+        ExamQuestion eq = buildExamQuestion(examId, q, 1);
+        when(examQuestionRepository.findByExamIdOrderByQuestionOrder(examId))
+            .thenReturn(List.of(eq));
+        when(snapshotRepository.saveAll(any())).thenAnswer(inv -> inv.getArgument(0));
+
+        snapshotService.createSnapshots(session);
+
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<List<SessionQuestionSnapshot>> captor = ArgumentCaptor.forClass(List.class);
+        verify(snapshotRepository).saveAll(captor.capture());
+
+        Map<String, Object> snapshot = captor.getValue().get(0).getSnapshot();
+        assertThat(snapshot.get("audioUrl")).isNull();
+        assertThat(snapshot.get("questionType")).isEqualTo("SHORT_ANSWER");
+        assertThat(snapshot.get("calculatorAllowed")).isEqualTo(false);
+    }
+
     // ── Helpers ───────────────────────────────────────────────────
 
     private Question buildQuestion(String text, Map<String, Object> correct, List<Map<String, Object>> options) {
