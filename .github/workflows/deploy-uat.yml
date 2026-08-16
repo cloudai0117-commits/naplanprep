@@ -218,7 +218,10 @@ jobs:
           TAG="${{ needs.build-and-push.outputs.image-tag }}"
           IMAGE="${{ env.BACKEND_IMAGE }}:$TAG"
           DIGEST="${{ needs.build-and-push.outputs.backend-digest }}"
-          PRE_TRIGGER_TIME=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+          # Include milliseconds so "14:48:07.000Z" > "14:48:07.460Z" compares correctly.
+          # Without .000 suffix Railway's .460Z response sorts BEFORE the trigger time
+          # in ASCII comparison ("." = 46 < "Z" = 90) causing false "no new deployment".
+          PRE_TRIGGER_TIME=$(date -u +"%Y-%m-%dT%H:%M:%S.000Z")
 
           echo "===== DEPLOY NEW RAILWAY IMAGE ====="
           echo "COMMIT_SHA=${{ github.sha }}"
@@ -286,12 +289,20 @@ jobs:
           fi
 
           # ── Step 5: Poll for the new deployment ─────────────────────────────────
-          # Must find a deployment with BOTH:
-          #   createdAt > PRE_TRIGGER_TIME
-          #   id        != PREVIOUS_DEPLOY_ID
+          # Detection criteria (BOTH must be true):
+          #   datetime(createdAt) >= datetime(PRE_TRIGGER_TIME)  — proper ISO-8601 parse
+          #   id != PREVIOUS_DEPLOY_ID
+          #
+          # Use datetime.fromisoformat() not string compare — Railway returns milliseconds
+          # (e.g. 14:48:07.460Z) while PRE_TRIGGER_TIME uses .000Z; ASCII comparison
+          # would put .460Z BEFORE Z due to "." (46) < "Z" (90), causing false negatives.
+          #
+          # Poll 20 × 15s = 5 min to handle Railway's eventual consistency.
+          # After loop, run one final fresh query before declaring failure.
+          _dt() { python3 -c "import datetime; print(datetime.datetime.fromisoformat('$1'.replace('Z','+00:00')).isoformat())" 2>/dev/null || echo "$1"; }
           DEPLOY_ID=""
-          for ATTEMPT in $(seq 1 16); do
-            echo "Waiting 15s for Railway to register the new deployment (attempt $ATTEMPT/16)..."
+          for ATTEMPT in $(seq 1 20); do
+            echo "Waiting 15s for Railway to register the new deployment (attempt $ATTEMPT/20)..."
             sleep 15
 
             curl -s --max-time 30 -X POST "${{ env.RAILWAY_API }}" \
@@ -306,7 +317,7 @@ jobs:
               exit 1
             fi
 
-            DEPLOY_ID=$(python3 -c "import json; d=json.load(open('/tmp/deploys.json')); nodes=[e['node'] for e in d.get('data',{}).get('deployments',{}).get('edges',[])]; nodes.sort(key=lambda n:n.get('createdAt',''),reverse=True); new=[n for n in nodes if n.get('createdAt','')>'$PRE_TRIGGER_TIME' and n.get('id','')!='$PREVIOUS_DEPLOY_ID']; print(new[0]['id'] if new else '')" 2>/dev/null || echo "")
+            DEPLOY_ID=$(python3 -c "import json,datetime; pre=datetime.datetime.fromisoformat('$PRE_TRIGGER_TIME'.replace('Z','+00:00')); d=json.load(open('/tmp/deploys.json')); nodes=[e['node'] for e in d.get('data',{}).get('deployments',{}).get('edges',[])]; nodes.sort(key=lambda n:n.get('createdAt',''),reverse=True); new=[n for n in nodes if n.get('createdAt') and datetime.datetime.fromisoformat(n['createdAt'].replace('Z','+00:00'))>=pre and n.get('id','')!='$PREVIOUS_DEPLOY_ID']; print(new[0]['id'] if new else '')" 2>/dev/null || echo "")
 
             if [ -n "$DEPLOY_ID" ]; then
               echo "New Railway deployment found after attempt $ATTEMPT: $DEPLOY_ID"
@@ -315,24 +326,59 @@ jobs:
             echo "  No new deployment yet (pre_trigger=$PRE_TRIGGER_TIME, prev=$PREVIOUS_DEPLOY_ID)"
           done
 
+          # ── Final fallback query — one more fresh fetch before declaring failure ──
+          # Railway's deployment list can be eventually consistent; the previous run
+          # proved deployment d4ca1a26 existed but was invisible during the poll window.
+          if [ -z "$DEPLOY_ID" ]; then
+            echo ""
+            echo "Poll loop ended with no result — performing final fresh query..."
+            curl -s --max-time 30 -X POST "${{ env.RAILWAY_API }}" \
+              -H "Content-Type: application/json" \
+              -H "Authorization: Bearer ${{ secrets.RAILWAY_TOKEN }}" \
+              -d "{\"query\":\"{deployments(input:{serviceId:\\\"${{ env.RAILWAY_BACKEND_SERVICE_ID }}\\\",environmentId:\\\"${{ env.RAILWAY_ENV_ID }}\\\"}){edges{node{id status createdAt}}}}\"}" \
+              > /tmp/deploys_final.json
+            cp /tmp/deploys_final.json /tmp/deploys.json
+
+            echo "Final query — all deployments:"
+            cat /tmp/deploys_final.json | python3 -m json.tool 2>/dev/null || cat /tmp/deploys_final.json
+
+            DEPLOY_ID=$(python3 -c "import json,datetime; pre=datetime.datetime.fromisoformat('$PRE_TRIGGER_TIME'.replace('Z','+00:00')); d=json.load(open('/tmp/deploys.json')); nodes=[e['node'] for e in d.get('data',{}).get('deployments',{}).get('edges',[])]; nodes.sort(key=lambda n:n.get('createdAt',''),reverse=True); new=[n for n in nodes if n.get('createdAt') and datetime.datetime.fromisoformat(n['createdAt'].replace('Z','+00:00'))>=pre and n.get('id','')!='$PREVIOUS_DEPLOY_ID']; print(new[0]['id'] if new else '')" 2>/dev/null || echo "")
+            if [ -n "$DEPLOY_ID" ]; then
+              echo "New Railway deployment found in final query: $DEPLOY_ID"
+            fi
+          fi
+
           if [ -z "$DEPLOY_ID" ]; then
             echo ""
             echo "FAIL: No new deployment appeared after deploy trigger."
             echo "      PRE_TRIGGER_TIME=$PRE_TRIGGER_TIME"
             echo "      PREVIOUS_DEPLOYMENT_ID=$PREVIOUS_DEPLOY_ID"
             echo "      EXPECTED_IMAGE=$IMAGE"
-            echo ""
-            echo "Confirmed no-ops: environmentTriggersDeploy, deploymentRestart."
             echo "Attempted: serviceInstanceRedeploy, Railway CLI redeploy."
             echo "See schema introspection above for all available Railway mutations."
-            echo ""
-            echo "All deployments at query time:"
-            cat /tmp/deploys.json | python3 -m json.tool 2>/dev/null || cat /tmp/deploys.json
             exit 1
           fi
 
-          DEPLOY_STATUS=$(python3 -c "import json; d=json.load(open('/tmp/deploys.json')); nodes=[e['node'] for e in d.get('data',{}).get('deployments',{}).get('edges',[])]; nodes.sort(key=lambda n:n.get('createdAt',''),reverse=True); new=[n for n in nodes if n.get('createdAt','')>'$PRE_TRIGGER_TIME' and n.get('id','')!='$PREVIOUS_DEPLOY_ID']; print(new[0].get('status','UNKNOWN') if new else 'NOT_FOUND')" 2>/dev/null || echo "UNKNOWN")
-          DEPLOY_CREATED=$(python3 -c "import json; d=json.load(open('/tmp/deploys.json')); nodes=[e['node'] for e in d.get('data',{}).get('deployments',{}).get('edges',[])]; nodes.sort(key=lambda n:n.get('createdAt',''),reverse=True); new=[n for n in nodes if n.get('createdAt','')>'$PRE_TRIGGER_TIME' and n.get('id','')!='$PREVIOUS_DEPLOY_ID']; print(new[0].get('createdAt','') if new else '')" 2>/dev/null || echo "")
+          DEPLOY_STATUS=$(python3 -c "import json,datetime; pre=datetime.datetime.fromisoformat('$PRE_TRIGGER_TIME'.replace('Z','+00:00')); d=json.load(open('/tmp/deploys.json')); nodes=[e['node'] for e in d.get('data',{}).get('deployments',{}).get('edges',[])]; nodes.sort(key=lambda n:n.get('createdAt',''),reverse=True); new=[n for n in nodes if n.get('createdAt') and datetime.datetime.fromisoformat(n['createdAt'].replace('Z','+00:00'))>=pre and n.get('id','')!='$PREVIOUS_DEPLOY_ID']; print(new[0].get('status','UNKNOWN') if new else 'NOT_FOUND')" 2>/dev/null || echo "UNKNOWN")
+          DEPLOY_CREATED=$(python3 -c "import json,datetime; pre=datetime.datetime.fromisoformat('$PRE_TRIGGER_TIME'.replace('Z','+00:00')); d=json.load(open('/tmp/deploys.json')); nodes=[e['node'] for e in d.get('data',{}).get('deployments',{}).get('edges',[])]; nodes.sort(key=lambda n:n.get('createdAt',''),reverse=True); new=[n for n in nodes if n.get('createdAt') and datetime.datetime.fromisoformat(n['createdAt'].replace('Z','+00:00'))>=pre and n.get('id','')!='$PREVIOUS_DEPLOY_ID']; print(new[0].get('createdAt','') if new else '')" 2>/dev/null || echo "")
+
+          # ── Query service instance source to verify correct image is configured ──
+          echo ""
+          echo "Querying Railway service source (image identity verification)..."
+          SOURCE_RESP=$(curl -s --max-time 30 -X POST "${{ env.RAILWAY_API }}" \
+            -H "Content-Type: application/json" \
+            -H "Authorization: Bearer ${{ secrets.RAILWAY_TOKEN }}" \
+            -d "{\"query\":\"{serviceInstance(serviceId:\\\"${{ env.RAILWAY_BACKEND_SERVICE_ID }}\\\",environmentId:\\\"${{ env.RAILWAY_ENV_ID }}\\\"){source{image repo}}}\"}")
+          DEPLOYED_SOURCE=$(echo "$SOURCE_RESP" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('data',{}).get('serviceInstance',{}).get('source',{}).get('image','NOT_SET'))" 2>/dev/null || echo "QUERY_FAILED")
+          echo "IMAGE_SOURCE=$DEPLOYED_SOURCE"
+          if [ "$DEPLOYED_SOURCE" = "$IMAGE" ]; then
+            IMAGE_MATCH="PASS"
+          elif [ "$DEPLOYED_SOURCE" = "NOT_SET" ] || [ "$DEPLOYED_SOURCE" = "QUERY_FAILED" ]; then
+            IMAGE_MATCH="NOT_VERIFIABLE_BY_CURRENT_API"
+          else
+            IMAGE_MATCH="MISMATCH — service source is $DEPLOYED_SOURCE, expected $IMAGE"
+          fi
+          echo "IMAGE_MATCH=$IMAGE_MATCH"
 
           echo ""
           echo "RAILWAY_DEPLOYMENT_ID=$DEPLOY_ID"
@@ -340,7 +386,10 @@ jobs:
           echo "RAILWAY_DEPLOYMENT_STATUS=$DEPLOY_STATUS"
           echo "RAILWAY_DEPLOYMENT_CREATED=$DEPLOY_CREATED"
           echo "NEW_DEPLOYMENT_ID_DIFFERS_FROM_PREVIOUS=$([ "$DEPLOY_ID" != "$PREVIOUS_DEPLOY_ID" ] && echo YES || echo NO)"
-          echo "DEPLOYMENT_IS_NEW=YES (createdAt=$DEPLOY_CREATED > pre_trigger=$PRE_TRIGGER_TIME)"
+          echo "TIMESTAMP_COMPARISON=PASS (createdAt=$DEPLOY_CREATED >= pre_trigger=$PRE_TRIGGER_TIME)"
+          echo "EXPECTED_IMAGE=$IMAGE"
+          echo "DEPLOYED_SOURCE=$DEPLOYED_SOURCE"
+          echo "IMAGE_MATCH=$IMAGE_MATCH"
           echo "DEPLOYMENT_ID_CAPTURE = PASS"
           echo "deployment-id=$DEPLOY_ID" >> "$GITHUB_OUTPUT"
 
