@@ -259,29 +259,29 @@ print(new[0]['id'] if new else '')
 
           # Print full diagnostics for the new deployment
           python3 - "$GITHUB_OUTPUT" "$PRE_TRIGGER_TIME" << 'PYEOF'
-import sys, json
-output_file = sys.argv[1]
-pre_trigger = sys.argv[2]
-with open('/tmp/deploys.json') as f:
-    d = json.load(f)
-nodes = [e['node'] for e in d.get('data', {}).get('deployments', {}).get('edges', [])]
-nodes.sort(key=lambda n: n.get('createdAt', ''), reverse=True)
-new = [n for n in nodes if n.get('createdAt', '') > pre_trigger]
-latest = new[0]
-deploy_id = latest.get('id', '')
-deploy_status = latest.get('status', 'UNKNOWN')
-deploy_created = latest.get('createdAt', '')
-print(f"RAILWAY_DEPLOYMENT_ID={deploy_id}")
-print(f"RAILWAY_DEPLOYMENT_STATUS={deploy_status}")
-print(f"RAILWAY_DEPLOYMENT_CREATED={deploy_created}")
-print(f"DEPLOYMENT_IS_NEW=YES (createdAt={deploy_created} > pre_trigger={pre_trigger})")
-with open(output_file, 'a') as f:
-    f.write(f"deployment-id={deploy_id}\n")
-if not deploy_id:
-    print("FAIL: deployment id is empty")
-    sys.exit(1)
-print("DEPLOYMENT_ID_CAPTURE = PASS")
-PYEOF
+          import sys, json
+          output_file = sys.argv[1]
+          pre_trigger = sys.argv[2]
+          with open('/tmp/deploys.json') as f:
+              d = json.load(f)
+          nodes = [e['node'] for e in d.get('data', {}).get('deployments', {}).get('edges', [])]
+          nodes.sort(key=lambda n: n.get('createdAt', ''), reverse=True)
+          new = [n for n in nodes if n.get('createdAt', '') > pre_trigger]
+          latest = new[0]
+          deploy_id = latest.get('id', '')
+          deploy_status = latest.get('status', 'UNKNOWN')
+          deploy_created = latest.get('createdAt', '')
+          print(f"RAILWAY_DEPLOYMENT_ID={deploy_id}")
+          print(f"RAILWAY_DEPLOYMENT_STATUS={deploy_status}")
+          print(f"RAILWAY_DEPLOYMENT_CREATED={deploy_created}")
+          print(f"DEPLOYMENT_IS_NEW=YES (createdAt={deploy_created} > pre_trigger={pre_trigger})")
+          with open(output_file, 'a') as f:
+              f.write(f"deployment-id={deploy_id}\n")
+          if not deploy_id:
+              print("FAIL: deployment id is empty")
+              sys.exit(1)
+          print("DEPLOYMENT_ID_CAPTURE = PASS")
+          PYEOF
 
       - name: Poll Railway deployment status until ACTIVE/SUCCESS
         # Do not health-poll until Railway itself says the deployment is done.
