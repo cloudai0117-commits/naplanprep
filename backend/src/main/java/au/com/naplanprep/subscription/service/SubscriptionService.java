@@ -22,6 +22,7 @@ import com.stripe.param.checkout.SessionCreateParams;
 import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.core.env.Environment;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -41,6 +42,7 @@ public class SubscriptionService {
     private final SubscriptionRepository subscriptionRepository;
     private final UserRepository userRepository;
     private final AppProperties appProperties;
+    private final Environment environment;
 
     @PostConstruct
     public void init() {
@@ -253,18 +255,30 @@ public class SubscriptionService {
      */
     private Event parseAndValidate(String payload, String sigHeader) {
         String webhookSecret = appProperties.getStripe().getWebhookSecret();
-        boolean skipVerification = webhookSecret == null
+        boolean secretMissing = webhookSecret == null
             || webhookSecret.isBlank()
             || webhookSecret.contains("placeholder")
             || webhookSecret.contains("dummy");
-        try {
-            if (skipVerification) {
-                log.warn("WEBHOOK_SIGNATURE_SKIP — webhook secret not configured; "
-                    + "signature validation disabled. Set app.stripe.webhook-secret in production.");
-                return ApiResource.GSON.fromJson(payload, Event.class);
+        if (secretMissing) {
+            boolean isDevProfile = java.util.Arrays.asList(environment.getActiveProfiles()).contains("dev");
+            if (!isDevProfile) {
+                log.error("WEBHOOK_SECRET_MISSING — STRIPE_WEBHOOK_SECRET is not configured. "
+                    + "Rejecting webhook to prevent unauthorized payment grant.");
+                throw new BusinessException("Webhook secret not configured — request rejected");
             }
+            log.warn("WEBHOOK_SIGNATURE_SKIP — webhook secret not configured (dev profile only); "
+                + "signature validation disabled.");
+            try {
+                return ApiResource.GSON.fromJson(payload, Event.class);
+            } catch (Exception e) {
+                log.error("WEBHOOK_PARSE_ERROR error={}", e.getMessage());
+                throw new BusinessException("Invalid webhook payload");
+            }
+        }
+        try {
+            Event event = Webhook.constructEvent(payload, sigHeader, webhookSecret);
             log.debug("WEBHOOK_SIGNATURE_VALID");
-            return Webhook.constructEvent(payload, sigHeader, webhookSecret);
+            return event;
         } catch (SignatureVerificationException e) {
             log.warn("WEBHOOK_SIGNATURE_INVALID sigHeader={} error={}", sigHeader, e.getMessage());
             throw new BusinessException("Invalid webhook signature");
