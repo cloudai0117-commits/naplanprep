@@ -1,4 +1,6 @@
 import { Link } from 'react-router-dom'
+import { useQuery } from '@tanstack/react-query'
+import apiClient from '@/api/client'
 
 const features = [
   { icon: '📚', title: 'Full Question Bank', desc: 'Thousands of NAPLAN-style questions across all domains' },
@@ -9,10 +11,10 @@ const features = [
   { icon: '🎯', title: 'NAPLAN Band Scores', desc: 'Instant band scores matching the official NAPLAN system' },
 ]
 
-const plans = [
+const STATIC_PLANS = [
   {
     name: 'Free',
-    price: 'Free',
+    priceKey: null,
     period: '',
     features: ['5 practice exams', 'All domains (Numeracy, Reading, Writing, Spelling, Grammar)', 'Progress tracking'],
     cta: 'Start Free',
@@ -20,7 +22,7 @@ const plans = [
   },
   {
     name: 'Advanced',
-    price: 'A$',
+    priceKey: 'advanced',
     priceNote: 'One-time · Valid 1 year',
     features: ['30 exams total (5 Free + 25 Advanced)', 'All year levels · All domains', 'Adaptive practice', 'Detailed analytics'],
     cta: 'Get Advanced',
@@ -28,7 +30,7 @@ const plans = [
   },
   {
     name: 'Premium',
-    price: 'A$',
+    priceKey: 'premium',
     priceNote: 'One-time · Valid 1 year',
     features: ['80 exams total (5 Free + 25 Advanced + 50 Premium)', 'All year levels · All domains', 'Adaptive practice', 'Parent dashboard', 'Detailed analytics'],
     cta: 'Get Premium',
@@ -37,6 +39,23 @@ const plans = [
 ]
 
 export default function LandingPage() {
+  const { data: apiPlans } = useQuery<any[]>({
+    queryKey: ['subscription-plans-public'],
+    queryFn: () => apiClient.get('/subscriptions/plans').then((r) => r.data.data ?? r.data),
+    staleTime: 5 * 60 * 1000,
+  })
+
+  const getPriceDisplay = (priceKey: string | null): string => {
+    if (!priceKey) return 'Free'
+    if (!apiPlans) return 'A$...'
+    const plan = apiPlans.find(
+      (p: any) => p.name?.toLowerCase() === priceKey || p.planType?.toLowerCase() === priceKey
+    )
+    if (!plan) return 'A$...'
+    const amount = plan.monthlyPrice ?? plan.price ?? plan.amount
+    return amount != null ? `A$${Number(amount).toFixed(2)}` : 'A$...'
+  }
+
   return (
     <div className="min-h-screen bg-white">
       <nav className="flex justify-between items-center px-6 py-4 max-w-7xl mx-auto">
@@ -89,7 +108,7 @@ export default function LandingPage() {
             One-time purchase · Valid for 1 year · No subscription
           </p>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            {plans.map((plan) => (
+            {STATIC_PLANS.map((plan) => (
               <div
                 key={plan.name}
                 className={`card relative ${
@@ -105,7 +124,7 @@ export default function LandingPage() {
                 )}
                 <h3 className="text-xl font-bold text-gray-900 mb-2">{plan.name}</h3>
                 <div className="mb-4">
-                  <span className="text-3xl font-bold text-gray-900">{plan.price}</span>
+                  <span className="text-3xl font-bold text-gray-900">{getPriceDisplay(plan.priceKey)}</span>
                   <span className="text-gray-500">{plan.period}</span>
                   {'priceNote' in plan && plan.priceNote && (
                     <div className="text-xs text-gray-500 mt-1">{plan.priceNote}</div>

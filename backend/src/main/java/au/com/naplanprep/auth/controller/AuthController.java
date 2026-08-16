@@ -9,6 +9,11 @@ import au.com.naplanprep.auth.service.AuthService;
 import au.com.naplanprep.common.ApiResponse;
 import au.com.naplanprep.common.exception.ResourceNotFoundException;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.AssertTrue;
+import jakarta.validation.constraints.Email;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Pattern;
+import jakarta.validation.constraints.Size;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -76,6 +81,41 @@ public class AuthController {
         )));
     }
 
+    /** Change password for the authenticated user. Blacklists the current access token on success. */
+    @PostMapping("/change-password")
+    public ResponseEntity<ApiResponse<Void>> changePassword(
+        @RequestBody @Valid ChangePasswordRequest req,
+        @AuthenticationPrincipal UserDetails userDetails,
+        @RequestHeader(value = "Authorization", required = false) String authHeader
+    ) {
+        UUID userId = UUID.fromString(userDetails.getUsername());
+        String currentToken = (authHeader != null && authHeader.startsWith("Bearer "))
+            ? authHeader.substring(7) : null;
+        authService.changePassword(userId, req.currentPassword(), req.newPassword(), currentToken);
+        return ResponseEntity.ok(ApiResponse.success(null));
+    }
+
+    /** Initiates forgot-password flow. Always 200 to prevent user enumeration. */
+    @PostMapping("/forgot-password")
+    public ResponseEntity<ApiResponse<Void>> forgotPassword(
+        @RequestBody @Valid ForgotPasswordRequest req,
+        @RequestHeader(value = "X-App-Base-URL", required = false) String appBaseUrl
+    ) {
+        String resetBaseUrl = (appBaseUrl != null && !appBaseUrl.isBlank())
+            ? appBaseUrl : "http://localhost:5173";
+        authService.forgotPassword(req.email(), resetBaseUrl);
+        return ResponseEntity.ok(ApiResponse.success(null));
+    }
+
+    /** Completes password reset with the single-use token from the email link. */
+    @PostMapping("/reset-password")
+    public ResponseEntity<ApiResponse<Void>> resetPassword(
+        @RequestBody @Valid ResetPasswordRequest req
+    ) {
+        authService.resetPassword(req.token(), req.newPassword());
+        return ResponseEntity.ok(ApiResponse.success(null));
+    }
+
     public record UserProfileResponse(
         UUID id,
         String email,
@@ -87,4 +127,48 @@ public class AuthController {
         String school,
         String avatarUrl
     ) {}
+
+    public record ChangePasswordRequest(
+        @NotBlank(message = "Current password is required")
+        String currentPassword,
+
+        @NotBlank(message = "New password is required")
+        @Size(min = 8, message = "Password must be at least 8 characters")
+        @Pattern(regexp = "^(?=.*[a-z])(?=.*[A-Z])(?=.*\\d).*$",
+            message = "Password must contain uppercase, lowercase and a number")
+        String newPassword,
+
+        @NotBlank(message = "Password confirmation is required")
+        String confirmNewPassword
+    ) {
+        @AssertTrue(message = "Passwords do not match")
+        public boolean isPasswordMatch() {
+            return newPassword != null && newPassword.equals(confirmNewPassword);
+        }
+    }
+
+    public record ForgotPasswordRequest(
+        @NotBlank(message = "Email is required")
+        @Email(message = "Invalid email")
+        String email
+    ) {}
+
+    public record ResetPasswordRequest(
+        @NotBlank(message = "Token is required")
+        String token,
+
+        @NotBlank(message = "New password is required")
+        @Size(min = 8, message = "Password must be at least 8 characters")
+        @Pattern(regexp = "^(?=.*[a-z])(?=.*[A-Z])(?=.*\\d).*$",
+            message = "Password must contain uppercase, lowercase and a number")
+        String newPassword,
+
+        @NotBlank(message = "Password confirmation is required")
+        String confirmNewPassword
+    ) {
+        @AssertTrue(message = "Passwords do not match")
+        public boolean isPasswordMatch() {
+            return newPassword != null && newPassword.equals(confirmNewPassword);
+        }
+    }
 }

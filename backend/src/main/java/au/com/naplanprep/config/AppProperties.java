@@ -15,6 +15,7 @@ public class AppProperties {
     private Stripe stripe = new Stripe();
     private Cors cors = new Cors();
     private String frontendUrl;
+    private String baseUrl = "http://localhost:5173";
     private RateLimit rateLimit = new RateLimit();
 
     @Data

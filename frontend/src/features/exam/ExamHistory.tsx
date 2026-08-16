@@ -6,7 +6,7 @@ import apiClient from '@/api/client'
 export default function ExamHistory() {
   const { data, isLoading } = useQuery({
     queryKey: ['exam-history'],
-    queryFn: () => apiClient.get('/exams/history?size=50').then((r) => r.data.data),
+    queryFn: () => apiClient.get('/exams/my-results?size=50').then((r) => r.data.data),
   })
 
   const sessions = data?.content || []

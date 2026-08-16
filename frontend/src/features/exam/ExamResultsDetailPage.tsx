@@ -181,14 +181,16 @@ export default function ExamResultsDetailPage() {
 
               <p className="text-sm text-gray-800 font-medium mb-3">{q.questionText}</p>
 
-              {q.options?.options && (
+              {Array.isArray(q.options) && q.options.length > 0 && (
                 <div className="space-y-1.5">
-                  {q.options.options.map((opt: string) => {
-                    const isCorrect = opt === q.correctAnswer
-                    const isStudentAnswer = opt === q.studentAnswer
+                  {q.options.map((opt: any) => {
+                    const optLabel = typeof opt === 'string' ? opt : (opt.label ?? opt.value ?? String(opt))
+                    const optText = typeof opt === 'string' ? opt : (opt.text ?? opt.value ?? optLabel)
+                    const isCorrect = optLabel === q.correctAnswer
+                    const isStudentAnswer = optLabel === q.studentAnswer
                     return (
                       <div
-                        key={opt}
+                        key={optLabel}
                         data-testid={isCorrect ? 'review-correct-answer' : isStudentAnswer && !isCorrect ? 'review-student-answer' : undefined}
                         className={`flex items-center px-3 py-2 rounded text-sm ${
                           isCorrect
@@ -201,7 +203,8 @@ export default function ExamResultsDetailPage() {
                         <span className="mr-2">
                           {isCorrect ? '✓' : isStudentAnswer && !isCorrect ? '✗' : '○'}
                         </span>
-                        {opt}
+                        <span className="font-medium mr-1">{optLabel}.</span>
+                        {optText}
                         {isCorrect && <span className="ml-auto text-xs text-green-600">Correct answer</span>}
                         {isStudentAnswer && !isCorrect && (
                           <span className="ml-auto text-xs text-red-600">Your answer</span>
@@ -212,8 +215,27 @@ export default function ExamResultsDetailPage() {
                 </div>
               )}
 
+              {q.correctAnswer && (
+                <div className="mt-3 text-sm font-medium text-gray-800">
+                  {(() => {
+                    const correctOpt = Array.isArray(q.options)
+                      ? q.options.find((opt: any) => {
+                          const label = typeof opt === 'string' ? opt : (opt.label ?? opt.value)
+                          return label === q.correctAnswer
+                        })
+                      : null
+                    const correctText = correctOpt != null && typeof correctOpt !== 'string'
+                      ? (correctOpt.text ?? correctOpt.value)
+                      : null
+                    return correctText
+                      ? `Answer: ${q.correctAnswer} — ${correctText}`
+                      : `Answer: ${q.correctAnswer}`
+                  })()}
+                </div>
+              )}
+
               {q.explanation && (
-                <div className="mt-3 text-xs text-gray-600 p-2 bg-blue-50 border border-blue-200 rounded">
+                <div className="mt-2 text-xs text-gray-600 p-2 bg-blue-50 border border-blue-200 rounded">
                   <strong>Explanation:</strong> {q.explanation}
                 </div>
               )}

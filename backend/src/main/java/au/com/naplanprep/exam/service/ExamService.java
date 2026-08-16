@@ -180,7 +180,19 @@ public class ExamService {
 
         // Write immutable snapshots before returning — any future reads use snapshots only
         snapshotService.createSnapshots(saved);
-        sessionRepository.save(saved); // persist hasSnapshot = true
+
+        // For branching/testlet exams, set the initial testlet so only that testlet's
+        // questions are returned to the student (not the entire pooled question set).
+        // The initial testlet is determined from the first snapshot (lowest questionOrder).
+        List<SessionQuestionSnapshot> allSnaps =
+            snapshotRepository.findByIdSessionIdOrderByQuestionOrder(saved.getId());
+        if (!allSnaps.isEmpty() && allSnaps.get(0).getTestletId() != null) {
+            UUID initialTestletId = allSnaps.get(0).getTestletId();
+            saved.setCurrentTestletId(initialTestletId);
+            saved.setQuestionPath(new ArrayList<>(List.of(initialTestletId)));
+        }
+
+        sessionRepository.save(saved); // persist hasSnapshot = true + currentTestletId + questionPath
 
         auditLogService.log(AuditLog.EXAM_STARTED, userId, saved.getId(),
             "examId=" + examId + " questions=" + questionIds.size());
@@ -189,8 +201,13 @@ public class ExamService {
     }
 
     private Map<String, Object> buildStartResponse(ExamSession session, UUID examId) {
-        List<SessionQuestionSnapshot> snaps =
-            snapshotRepository.findByIdSessionIdOrderByQuestionOrder(session.getId());
+        // For branching exams, return only the initial testlet's questions.
+        // Returning all snapshots (all testlets) would expose the full question pool
+        // and show incorrect "Question 1 of 128" instead of "Question 1 of 16".
+        List<SessionQuestionSnapshot> snaps = (session.getCurrentTestletId() != null)
+            ? snapshotRepository.findByIdSessionIdAndTestletIdOrderByQuestionOrder(
+                session.getId(), session.getCurrentTestletId())
+            : snapshotRepository.findByIdSessionIdOrderByQuestionOrder(session.getId());
 
         List<Map<String, Object>> questions = snaps.stream()
             .map(s -> studentView(s.getSnapshot(), s.getQuestionOrder()))
@@ -238,9 +255,13 @@ public class ExamService {
 
         // Snapshot path (admin exams with snapshots)
         if (Boolean.TRUE.equals(session.getHasSnapshot())) {
-            return snapshotRepository.findByIdSessionIdOrderByQuestionOrder(sessionId).stream()
-                .map(s -> snapshotToQuestionSummary(s))
-                .toList();
+            // For branching exams, return only the current testlet's questions.
+            // The full pool spans all testlets; only the active testlet is shown to the student.
+            List<SessionQuestionSnapshot> snaps = (session.getCurrentTestletId() != null)
+                ? snapshotRepository.findByIdSessionIdAndTestletIdOrderByQuestionOrder(
+                    sessionId, session.getCurrentTestletId())
+                : snapshotRepository.findByIdSessionIdOrderByQuestionOrder(sessionId);
+            return snaps.stream().map(s -> snapshotToQuestionSummary(s)).toList();
         }
 
         // Flat path (practice sessions without snapshots)

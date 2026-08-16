@@ -17,6 +17,7 @@ import PricingPage from '@/features/subscription/PricingPage'
 import ParentDashboard from '@/features/parent/ParentDashboard'
 import ProfileSettings from '@/features/profile/ProfileSettings'
 import SchoolsPage from '@/features/admin/SchoolsPage'
+import ResetPasswordPage from '@/features/auth/pages/ResetPasswordPage'
 
 function App() {
   const { isAuthenticated } = useAuthStore()
@@ -33,6 +34,8 @@ function App() {
           path="/register"
           element={isAuthenticated ? <Navigate to="/dashboard" replace /> : <RegisterPage />}
         />
+
+        <Route path="/reset-password" element={<ResetPasswordPage />} />
 
         <Route element={<Layout />}>
           <Route path="/pricing" element={<PricingPage />} />

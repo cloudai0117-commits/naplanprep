@@ -3,8 +3,10 @@ package au.com.naplanprep.auth.service;
 import au.com.naplanprep.auth.dto.AuthResponse;
 import au.com.naplanprep.auth.dto.LoginRequest;
 import au.com.naplanprep.auth.dto.RegisterRequest;
+import au.com.naplanprep.auth.entity.PasswordResetToken;
 import au.com.naplanprep.auth.entity.User;
 import au.com.naplanprep.auth.entity.UserProfile;
+import au.com.naplanprep.auth.repository.PasswordResetTokenRepository;
 import au.com.naplanprep.auth.repository.UserRepository;
 import au.com.naplanprep.common.exception.BusinessException;
 import au.com.naplanprep.config.AppProperties;
@@ -18,8 +20,14 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.security.SecureRandom;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.Base64;
+import java.util.UUID;
 
 @Slf4j
 @Service
@@ -31,6 +39,8 @@ public class AuthService {
     private final JwtTokenProvider jwtTokenProvider;
     private final RedisTemplate<String, String> redisTemplate;
     private final AppProperties appProperties;
+    private final PasswordResetTokenRepository passwordResetTokenRepository;
+    private final EmailService emailService;
 
     @Transactional
     public AuthResponse register(RegisterRequest req) {
@@ -118,6 +128,104 @@ public class AuthService {
             } catch (Exception redisEx) {
                 log.warn("Redis unavailable for logout blacklist — token not blacklisted: {}", redisEx.getMessage());
             }
+        }
+    }
+
+    /**
+     * Change password for an authenticated user.
+     * Verifies current password before accepting the new one.
+     * Blacklists the current access token on success so the session cannot be reused.
+     */
+    @Transactional
+    public void changePassword(UUID userId, String currentPassword, String newPassword, String currentToken) {
+        User user = userRepository.findById(userId)
+            .orElseThrow(() -> new BusinessException("User not found"));
+
+        if (!passwordEncoder.matches(currentPassword, user.getPassword())) {
+            throw new BusinessException("Current password is incorrect");
+        }
+        if (passwordEncoder.matches(newPassword, user.getPassword())) {
+            throw new BusinessException("New password must differ from current password");
+        }
+
+        user.setPassword(passwordEncoder.encode(newPassword));
+        userRepository.save(user);
+
+        if (currentToken != null && jwtTokenProvider.isTokenValid(currentToken)) {
+            try {
+                redisTemplate.opsForValue().set("blacklist:" + currentToken, "1",
+                    Duration.ofSeconds(appProperties.getJwt().getAccessTokenExpiry()));
+            } catch (Exception redisEx) {
+                log.warn("Redis unavailable — current token not blacklisted after password change");
+            }
+        }
+
+        log.info("PASSWORD_CHANGED — userId={}", userId);
+    }
+
+    /**
+     * Initiates the forgot-password flow.
+     * Always returns without error — never reveals whether the email is registered.
+     */
+    @Transactional
+    public void forgotPassword(String email, String resetBaseUrl) {
+        String normalizedEmail = email.toLowerCase().trim();
+        userRepository.findByEmail(normalizedEmail).ifPresent(user -> {
+            passwordResetTokenRepository.invalidateAllForUser(user.getId(), Instant.now());
+
+            byte[] bytes = new byte[32];
+            new SecureRandom().nextBytes(bytes);
+            String rawToken = Base64.getUrlEncoder().withoutPadding().encodeToString(bytes);
+
+            passwordResetTokenRepository.save(PasswordResetToken.builder()
+                .userId(user.getId())
+                .tokenHash(sha256Hex(rawToken))
+                .expiresAt(Instant.now().plus(Duration.ofHours(1)))
+                .build());
+
+            String resetUrl = resetBaseUrl + "/reset-password?token=" + rawToken;
+            emailService.sendPasswordResetEmail(normalizedEmail, resetUrl);
+            log.debug("PASSWORD_RESET_INITIATED — userId={}", user.getId());
+        });
+    }
+
+    /**
+     * Completes password reset using the single-use token from the reset email.
+     */
+    @Transactional
+    public void resetPassword(String rawToken, String newPassword) {
+        String tokenHash = sha256Hex(rawToken);
+        PasswordResetToken prt = passwordResetTokenRepository.findByTokenHash(tokenHash)
+            .orElseThrow(() -> new BusinessException("Invalid or expired reset link"));
+
+        if (prt.isUsed()) {
+            throw new BusinessException("Reset link has already been used");
+        }
+        if (prt.isExpired()) {
+            throw new BusinessException("Reset link has expired. Please request a new one.");
+        }
+
+        User user = userRepository.findById(prt.getUserId())
+            .orElseThrow(() -> new BusinessException("User not found"));
+
+        user.setPassword(passwordEncoder.encode(newPassword));
+        userRepository.save(user);
+
+        prt.setUsedAt(Instant.now());
+        passwordResetTokenRepository.save(prt);
+
+        log.info("PASSWORD_RESET_COMPLETED — userId={}", user.getId());
+    }
+
+    private static String sha256Hex(String input) {
+        try {
+            MessageDigest md = MessageDigest.getInstance("SHA-256");
+            byte[] digest = md.digest(input.getBytes(StandardCharsets.UTF_8));
+            StringBuilder sb = new StringBuilder(64);
+            for (byte b : digest) sb.append(String.format("%02x", b));
+            return sb.toString();
+        } catch (NoSuchAlgorithmException e) {
+            throw new RuntimeException("SHA-256 unavailable", e);
         }
     }
 

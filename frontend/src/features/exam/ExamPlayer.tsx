@@ -360,15 +360,18 @@ export default function ExamPlayer() {
                     />
                     <p className="mt-2 text-xs text-gray-500">Type one word. Spelling counts.</p>
                   </div>
-                ) : currentQuestion.options?.options && (
-                  <div className="space-y-2">
-                    {currentQuestion.options.options.map((opt: string) => (
+                ) : Array.isArray(currentQuestion.options) && currentQuestion.options.length > 0 && (
+                  <div className="space-y-2" data-testid="options-list">
+                    {currentQuestion.options.map((opt: any) => {
+                      const optLabel = typeof opt === 'string' ? opt : (opt.label ?? opt.value ?? String(opt))
+                      const optText = typeof opt === 'string' ? opt : (opt.text ?? opt.value ?? optLabel)
+                      return (
                       <label
-                        key={opt}
+                        key={optLabel}
                         data-testid="answer-option"
-                        aria-checked={answers[currentQuestionId] === opt}
+                        aria-checked={answers[currentQuestionId] === optLabel}
                         className={`flex items-center p-4 border rounded-lg cursor-pointer transition-colors ${
-                          answers[currentQuestionId] === opt
+                          answers[currentQuestionId] === optLabel
                             ? 'border-primary-500 bg-primary-50 selected'
                             : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
                         }`}
@@ -376,19 +379,20 @@ export default function ExamPlayer() {
                         <input
                           type="radio"
                           name={`q-${currentQuestionId}`}
-                          value={opt}
-                          checked={answers[currentQuestionId] === opt}
-                          onChange={() => handleAnswer(currentQuestionId, opt)}
+                          value={optLabel}
+                          checked={answers[currentQuestionId] === optLabel}
+                          onChange={() => handleAnswer(currentQuestionId, optLabel)}
                           className="sr-only"
                         />
                         <div className={`w-4 h-4 rounded-full border-2 mr-3 flex-shrink-0 ${
-                          answers[currentQuestionId] === opt
+                          answers[currentQuestionId] === optLabel
                             ? 'border-primary-500 bg-primary-500'
                             : 'border-gray-400'
                         }`} />
-                        <span className="text-gray-800">{opt}</span>
+                        <span className="text-gray-800">{optLabel}. {optText}</span>
                       </label>
-                    ))}
+                    )
+                    })}
                   </div>
                 )}
               </div>
