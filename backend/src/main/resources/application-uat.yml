@@ -4,6 +4,9 @@ server:
 spring:
   flyway:
     out-of-order: false
+    # If V381 recorded a FAILED state in flyway_schema_history (e.g., from a partial
+    # run on a previous deployment), ignore it so V382 can proceed and repair the data.
+    ignore-migration-patterns: "*:Failed"
   jpa:
     hibernate:
       ddl-auto: none

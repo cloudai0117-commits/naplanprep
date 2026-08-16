@@ -1091,14 +1091,243 @@ jobs:
           fi
           echo "Spelling SHORT_ANSWER check: PASS (type=$FIRST_TYPE)"
 
+      - name: Verify studentTestLength — pool counts must NOT appear in catalog
+        # FAIL-FAST: if any exam exposes a pool count as studentTestLength, the
+        # V381/V382 migration has not run and UAT is broken.
+        # Authoritative values: NUM Y3=36 Y5=42 Y7/Y9=48; READ Y3/Y5=39 Y7/Y9=48;
+        #                       SPELLING=25; GRAMMAR_PUNCTUATION=27; WRITING=1
+        run: |
+          BASE_URL="${{ vars.UAT_API_URL }}"
+          TIMESTAMP=$(date +%s)
+          EMAIL="catcheck_${TIMESTAMP}@naplanprep-ci.test"
+          PASSWORD="CatCheck123!"
+
+          printf '{"email":"%s","password":"%s","firstName":"Cat","lastName":"Check","role":"STUDENT"}' \
+            "$EMAIL" "$PASSWORD" > /tmp/.catcheck_reg.json
+          curl -s -o /dev/null -w "%{http_code}" --max-time 30 \
+            -X POST "$BASE_URL/auth/register" \
+            -H "Content-Type: application/json" \
+            --data @/tmp/.catcheck_reg.json > /dev/null || true
+          rm -f /tmp/.catcheck_reg.json
+
+          printf '{"email":"%s","password":"%s"}' "$EMAIL" "$PASSWORD" > /tmp/.catcheck_creds.json
+          LOGIN_HTTP=$(curl -s -o /tmp/catcheck_login.json -w "%{http_code}" --max-time 30 \
+            -X POST "$BASE_URL/auth/login" \
+            -H "Content-Type: application/json" \
+            --data @/tmp/.catcheck_creds.json 2>/dev/null || echo "000")
+          rm -f /tmp/.catcheck_creds.json
+          if [ "$LOGIN_HTTP" != "200" ]; then
+            echo "FAIL: login returned $LOGIN_HTTP — skipping studentTestLength check"
+            exit 1
+          fi
+          TOKEN=$(python3 -c "import json; d=json.load(open('/tmp/catcheck_login.json')); print(d.get('data',{}).get('accessToken',''))" 2>/dev/null || echo "")
+          rm -f /tmp/catcheck_login.json
+          echo "::add-mask::$TOKEN"
+
+          curl -s -o /tmp/cat_check.json -w "%{http_code}" --max-time 30 \
+            -H "Authorization: Bearer $TOKEN" \
+            "$BASE_URL/exams/available" > /tmp/cat_check_http.txt 2>/dev/null || echo "000" > /tmp/cat_check_http.txt
+          CAT_HTTP=$(cat /tmp/cat_check_http.txt)
+          if [ "$CAT_HTTP" != "200" ]; then
+            echo "FAIL: GET /exams/available returned HTTP $CAT_HTTP"
+            exit 1
+          fi
+
+          python3 << 'EOF'
+          import json, sys
+
+          with open('/tmp/cat_check.json') as f:
+              data = json.load(f)
+
+          exams = data.get('data', [])
+          print(f"Total exams in catalog: {len(exams)}")
+
+          # Pool counts that MUST NOT appear as studentTestLength
+          FORBIDDEN = {128, 112, 96, 104, 72, 43}
+          # Authoritative expected values
+          EXPECTED = {
+              ('NUMERACY', 3): 36, ('NUMERACY', 5): 42,
+              ('NUMERACY', 7): 48, ('NUMERACY', 9): 48,
+              ('READING',  3): 39, ('READING',  5): 39,
+              ('READING',  7): 48, ('READING',  9): 48,
+              ('SPELLING', 3): 25, ('SPELLING', 5): 25,
+              ('SPELLING', 7): 25, ('SPELLING', 9): 25,
+              ('WRITING',  3):  1, ('WRITING',  5):  1,
+              ('WRITING',  7):  1, ('WRITING',  9):  1,
+              ('GRAMMAR_PUNCTUATION', 3): 27, ('GRAMMAR_PUNCTUATION', 5): 27,
+              ('GRAMMAR_PUNCTUATION', 7): 27, ('GRAMMAR_PUNCTUATION', 9): 27,
+          }
+
+          failures = []
+          pool_count_violations = []
+          missing_field = []
+
+          for e in exams:
+              domain = e.get('domain', '')
+              year = e.get('yearLevel')
+              stl = e.get('studentTestLength')
+              title = e.get('title', '?')
+
+              if stl is None:
+                  missing_field.append(f"  {domain} Y{year} '{title}' — studentTestLength is NULL")
+                  continue
+
+              if stl in FORBIDDEN:
+                  pool_count_violations.append(
+                      f"  FAIL: {domain} Y{year} '{title}' studentTestLength={stl} (POOL COUNT EXPOSED)")
+
+              key = (domain, year)
+              if key in EXPECTED and stl != EXPECTED[key]:
+                  failures.append(
+                      f"  FAIL: {domain} Y{year} '{title}' expected={EXPECTED[key]} actual={stl}")
+
+          if missing_field:
+              print("MISSING studentTestLength field:")
+              for m in missing_field: print(m)
+
+          if pool_count_violations:
+              print()
+              print("=== DEPLOYMENT BLOCKED — POOL COUNTS EXPOSED AS studentTestLength ===")
+              print("V381/V382 migration has NOT run. UAT is showing pool counts, not student test lengths.")
+              for v in pool_count_violations: print(v)
+              sys.exit(1)
+
+          if failures:
+              print()
+              print("=== DEPLOYMENT BLOCKED — INCORRECT studentTestLength VALUES ===")
+              for f in failures: print(f)
+              sys.exit(1)
+
+          if missing_field:
+              print()
+              print("WARN: Some exams have NULL studentTestLength — check V381/V382 migrations")
+              sys.exit(1)
+
+          print()
+          print("STUDENT_TEST_LENGTH_GATE = PASS")
+          print("  No pool counts exposed. All sampled values match expected student test lengths.")
+          EOF
+
       - name: Summary
         run: |
           echo ""
           echo "=== REMOTE UAT SMOKE TEST SUMMARY ==="
-          echo "  Backend health    : PASS"
-          echo "  Plans API         : PASS"
-          echo "  Auth flow         : PASS"
-          echo "  DB integrity gate : PASS (validated in previous job)"
-          echo "  Spelling type     : PASS (SHORT_ANSWER, no AUDIO_RESPONSE)"
+          echo "  Backend health          : PASS"
+          echo "  Plans API               : PASS"
+          echo "  Auth flow               : PASS"
+          echo "  DB integrity gate       : PASS (validated in previous job)"
+          echo "  Spelling type           : PASS (SHORT_ANSWER, no AUDIO_RESPONSE)"
+          echo "  studentTestLength gate  : PASS (no pool counts exposed)"
           echo ""
           echo "REMOTE_UAT_READY = YES (pending full manual UAT sign-off)"
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # UAT REGRESSION SUITE
+  #
+  # Runs the naplanprep-tests REST Assured + Playwright suite against the
+  # freshly deployed UAT environment.
+  #
+  # Prerequisites:
+  #   - TESTS_REPO_TOKEN secret: PAT with actions:read + repo:read on the
+  #     naplanprep-tests repository (if private). Omit if repo is public
+  #     (GITHUB_TOKEN can read public repos).
+  #   - UAT_TESTS_REPO_OWNER variable (optional): GitHub org/user owning
+  #     naplanprep-tests. Defaults to this repo's owner.
+  #   - UAT_API_URL variable: backend base URL (used as api.base.url)
+  #   - UAT_FRONTEND_URL variable: frontend base URL (used as BASE_URL)
+  # ─────────────────────────────────────────────────────────────────────────────
+  run-uat-regression:
+    name: UAT Regression Suite (naplanprep-tests)
+    runs-on: ubuntu-latest
+    needs: [smoke-test]
+    if: needs.smoke-test.result == 'success' && vars.UAT_API_URL != ''
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout naplanprep-tests
+        uses: actions/checkout@v4.2.2
+        with:
+          repository: ${{ vars.UAT_TESTS_REPO_OWNER != '' && format('{0}/naplanprep-tests', vars.UAT_TESTS_REPO_OWNER) || format('{0}/naplanprep-tests', github.repository_owner) }}
+          token: ${{ secrets.TESTS_REPO_TOKEN || secrets.GITHUB_TOKEN }}
+          path: naplanprep-tests
+
+      - name: Set up Java 21
+        uses: actions/setup-java@v4.7.1
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+          cache: 'maven'
+
+      - name: Run REST Assured API tests (studentTestLength regression)
+        working-directory: naplanprep-tests/api-tests
+        env:
+          API_BASE_URL: ${{ vars.UAT_API_URL }}
+        run: |
+          mvn test \
+            -Dapi.base.url="${{ vars.UAT_API_URL }}" \
+            -pl . \
+            --no-transfer-progress \
+            2>&1 | tee /tmp/api-test-output.txt
+          EXIT_CODE=${PIPESTATUS[0]}
+          if [ $EXIT_CODE -ne 0 ]; then
+            echo ""
+            echo "=== API TEST FAILURES ==="
+            grep -E "FAIL|ERROR|Tests run" /tmp/api-test-output.txt | head -50
+            echo "API_REGRESSION_TESTS = FAIL"
+            exit $EXIT_CODE
+          fi
+          echo "API_REGRESSION_TESTS = PASS"
+
+      - name: Upload API test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: uat-api-test-results
+          path: naplanprep-tests/api-tests/target/surefire-reports/
+          retention-days: 14
+
+      - name: Set up Node.js (for Playwright)
+        uses: actions/setup-node@v4.4.0
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: naplanprep-tests/playwright/package.json
+
+      - name: Install Playwright dependencies
+        working-directory: naplanprep-tests/playwright
+        run: npm ci
+
+      - name: Install Playwright browsers
+        working-directory: naplanprep-tests/playwright
+        run: npx playwright install --with-deps chromium
+
+      - name: Run Playwright smoke tests (@smoke — includes studentTestLength UI checks)
+        working-directory: naplanprep-tests/playwright
+        env:
+          BASE_URL: ${{ vars.UAT_FRONTEND_URL || 'https://frontend-nu-topaz-20.vercel.app' }}
+          API_URL: ${{ vars.UAT_API_URL }}
+          STUDENT_FREE_EMAIL: student1@test.com
+          STUDENT_FREE_PASSWORD: Admin123!
+          STUDENT_STANDARD_EMAIL: student3@test.com
+          STUDENT_STANDARD_PASSWORD: Admin123!
+        run: |
+          npx playwright test --grep @smoke --project=chromium \
+            2>&1 | tee /tmp/pw-smoke-output.txt
+          EXIT_CODE=${PIPESTATUS[0]}
+          if [ $EXIT_CODE -ne 0 ]; then
+            echo ""
+            echo "=== PLAYWRIGHT SMOKE TEST FAILURES ==="
+            grep -E "FAIL|Error:|✕|●" /tmp/pw-smoke-output.txt | head -50
+            echo "PLAYWRIGHT_SMOKE_TESTS = FAIL"
+            exit $EXIT_CODE
+          fi
+          echo "PLAYWRIGHT_SMOKE_TESTS = PASS"
+
+      - name: Upload Playwright report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: uat-playwright-report
+          path: naplanprep-tests/playwright/playwright-report/
+          retention-days: 14
