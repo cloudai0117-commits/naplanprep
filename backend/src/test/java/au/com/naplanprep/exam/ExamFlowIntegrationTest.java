@@ -11,6 +11,7 @@ import au.com.naplanprep.exam.entity.PackageType;
 import au.com.naplanprep.exam.entity.ExamSession;
 import au.com.naplanprep.exam.repository.*;
 import au.com.naplanprep.exam.service.ExamService;
+import au.com.naplanprep.common.TestExamFactory;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -23,7 +24,6 @@ import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
-import java.time.Instant;
 import java.util.Map;
 import java.util.UUID;
 
@@ -78,16 +78,10 @@ class ExamFlowIntegrationTest {
         question.setCorrectAnswer(Map.of("value", "C"));
         question = questionRepository.save(question);
 
-        exam = new Exam();
+        exam = TestExamFactory.publishedExam(Question.Domain.NUMERACY, 5, PackageType.FREE);
         exam.setTitle("Integration Test Exam");
-        exam.setYearLevel(5);
-        exam.setDomain(Question.Domain.NUMERACY);
-        exam.setPackageType(PackageType.FREE);
-        exam.setTimeLimitSeconds(1800);
-        exam.setStatus(Exam.ExamStatus.PUBLISHED);
-        exam.setAvailableFrom(Instant.now().minusSeconds(3600));
-        exam.setAvailableUntil(Instant.now().plusSeconds(3600));
         exam = examRepository.save(exam);
+        TestExamFactory.assertStudentTestLengthSet(exam);
 
         ExamQuestion eq = new ExamQuestion();
         eq.setId(new ExamQuestion.ExamQuestionId(exam.getId(), question.getId()));

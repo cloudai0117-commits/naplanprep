@@ -4,6 +4,7 @@ import au.com.naplanprep.admin.service.AdminService;
 import au.com.naplanprep.auth.entity.User;
 import au.com.naplanprep.auth.repository.UserRepository;
 import au.com.naplanprep.common.StripeTestUtils;
+import au.com.naplanprep.common.TestExamFactory;
 import au.com.naplanprep.common.exception.BusinessException;
 import au.com.naplanprep.content.entity.Question;
 import au.com.naplanprep.content.repository.QuestionRepository;
@@ -107,22 +108,18 @@ class PlanUpgradeIntegrationTest {
         q.setStatus(Question.QuestionStatus.PUBLISHED);
         q = questionRepository.save(q);
 
-        standardExam = examRepository.save(Exam.builder()
-            .title("Advanced Exam").yearLevel(5).domain(Question.Domain.NUMERACY)
-            .packageType(PackageType.ADVANCED).timeLimitSeconds(1800)
-            .status(Exam.ExamStatus.PUBLISHED)
-            .availableFrom(Instant.now().minusSeconds(3600))
-            .availableUntil(Instant.now().plusSeconds(3600))
-            .build());
+        standardExam = examRepository.save(
+            TestExamFactory.examBuilder(Question.Domain.NUMERACY, 5, PackageType.ADVANCED)
+                .title("Advanced Exam")
+                .build());
+        TestExamFactory.assertStudentTestLengthSet(standardExam);
         linkQuestion(standardExam, q);
 
-        premiumExam = examRepository.save(Exam.builder()
-            .title("Premium Exam").yearLevel(5).domain(Question.Domain.NUMERACY)
-            .packageType(PackageType.PREMIUM).timeLimitSeconds(1800)
-            .status(Exam.ExamStatus.PUBLISHED)
-            .availableFrom(Instant.now().minusSeconds(3600))
-            .availableUntil(Instant.now().plusSeconds(3600))
-            .build());
+        premiumExam = examRepository.save(
+            TestExamFactory.examBuilder(Question.Domain.NUMERACY, 5, PackageType.PREMIUM)
+                .title("Premium Exam")
+                .build());
+        TestExamFactory.assertStudentTestLengthSet(premiumExam);
         linkQuestion(premiumExam, q);
     }
 
