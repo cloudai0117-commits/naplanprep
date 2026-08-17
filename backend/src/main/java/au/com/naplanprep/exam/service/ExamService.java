@@ -290,9 +290,45 @@ public class ExamService {
         return session;
     }
 
-    @Transactional(readOnly = true)
+    @Transactional
     public List<QuestionSummary> getSessionQuestions(UUID sessionId, UUID userId) {
         ExamSession session = getSession(sessionId, userId);
+
+        // Retroactive fix: sessions that have snapshots but never had currentTestletId set
+        // (created in the window between snapshot introduction and testlet-routing introduction).
+        if (Boolean.TRUE.equals(session.getHasSnapshot()) && session.getCurrentTestletId() == null) {
+            List<SessionQuestionSnapshot> allSnaps =
+                snapshotRepository.findByIdSessionIdOrderByQuestionOrder(sessionId);
+            if (!allSnaps.isEmpty() && allSnaps.get(0).getTestletId() != null) {
+                session.setCurrentTestletId(allSnaps.get(0).getTestletId());
+                if (session.getQuestionPath() == null || session.getQuestionPath().isEmpty()) {
+                    session.setQuestionPath(new ArrayList<>(List.of(allSnaps.get(0).getTestletId())));
+                }
+                sessionRepository.save(session);
+            }
+        }
+
+        // Retroactive fix: sessions started before snapshot-based initialization was introduced.
+        // Without snapshots the flat path returns the entire pool (e.g. 128 for Y9 Numeracy).
+        if (!Boolean.TRUE.equals(session.getHasSnapshot())) {
+            List<SessionQuestionSnapshot> existingSnaps =
+                snapshotRepository.findByIdSessionIdOrderByQuestionOrder(sessionId);
+            if (existingSnaps.isEmpty()) {
+                snapshotService.createSnapshots(session);
+            } else {
+                session.setHasSnapshot(true);
+            }
+            List<SessionQuestionSnapshot> allSnaps =
+                snapshotRepository.findByIdSessionIdOrderByQuestionOrder(session.getId());
+            if (!allSnaps.isEmpty() && allSnaps.get(0).getTestletId() != null
+                    && session.getCurrentTestletId() == null) {
+                session.setCurrentTestletId(allSnaps.get(0).getTestletId());
+                if (session.getQuestionPath() == null || session.getQuestionPath().isEmpty()) {
+                    session.setQuestionPath(new ArrayList<>(List.of(allSnaps.get(0).getTestletId())));
+                }
+            }
+            sessionRepository.save(session);
+        }
 
         // Snapshot path (admin exams with snapshots)
         if (Boolean.TRUE.equals(session.getHasSnapshot())) {
@@ -672,7 +708,21 @@ public class ExamService {
         }
 
         List<ExamAnswer> answers = answerRepository.findBySessionId(session.getId());
-        int total = session.getQuestionIds().size();
+
+        // Use the exam's authoritative student_test_length, not the adaptive pool size.
+        // session.getStudentTestLength() is a @Transient field populated by getSession() in most
+        // callers, but is null in the timeout path (called before transient enrichment).
+        // Fall back to a direct exam lookup when the transient value is absent.
+        int studentTestLen = session.getStudentTestLength() != null && session.getStudentTestLength() > 0
+            ? session.getStudentTestLength() : 0;
+        if (studentTestLen <= 0 && session.getExamId() != null) {
+            studentTestLen = examRepository.findById(session.getExamId())
+                .map(Exam::getStudentTestLength)
+                .filter(l -> l != null && l > 0)
+                .orElse(0);
+        }
+        int total = studentTestLen > 0 ? studentTestLen : session.getQuestionIds().size();
+
         long correctCount = answers.stream().filter(a -> Boolean.TRUE.equals(a.getCorrect())).count();
         double score = total > 0 ? (correctCount * 100.0) / total : 0;
 

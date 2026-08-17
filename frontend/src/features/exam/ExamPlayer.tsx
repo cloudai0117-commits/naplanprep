@@ -156,6 +156,24 @@ export default function ExamPlayer() {
     },
   })
 
+  // Testlet advance: for adaptive exams (Numeracy, Reading) where the student traverses
+  // multiple testlets. When pathComplete=true the exam ends; otherwise the questions query
+  // is invalidated so the server returns the next testlet's questions.
+  const { mutate: advanceTestlet, isPending: advancing } = useMutation({
+    mutationFn: (testletId: string) =>
+      apiClient.post(`/exams/sessions/${sessionId}/testlet/${testletId}/complete`),
+    onSuccess: (res) => {
+      const data = res.data.data
+      if (data.pathComplete) {
+        submitExam()
+      } else {
+        queryClient.invalidateQueries({ queryKey: ['exam-session', sessionId] })
+        queryClient.invalidateQueries({ queryKey: ['session-questions', sessionId] })
+        setCurrentIdx(0)
+      }
+    },
+  })
+
   const handleAnswer = (questionId: string, answer: string) => {
     setAnswers((prev) => ({ ...prev, [questionId]: answer }))
     submitAnswer({ questionId, answer })
@@ -225,8 +243,13 @@ export default function ExamPlayer() {
   }
 
   const answeredCount = Object.keys(answers).length
+  // studentTestLength is the authoritative test length from the exam (e.g. 48 for Y9 Numeracy).
+  // questions.length is only a fallback for flat exams without testlet routing.
   const displayTotal = session?.studentTestLength ?? questions.length
   const progress = displayTotal > 0 ? (answeredCount / displayTotal) * 100 : 0
+
+  const isTestletExam = !!session?.currentTestletId
+  const isLastQuestion = currentIdx === questions.length - 1
 
   return (
     <div className="fixed inset-0 z-50 bg-gray-50 flex flex-col">
@@ -453,13 +476,23 @@ export default function ExamPlayer() {
         >
           ← Previous
         </button>
-        <button
-          onClick={() => setCurrentIdx(Math.min(questions.length - 1, currentIdx + 1))}
-          disabled={currentIdx === questions.length - 1}
-          className="btn-primary py-2 px-4 text-sm"
-        >
-          Next →
-        </button>
+        {isLastQuestion && isTestletExam ? (
+          <button
+            onClick={() => advanceTestlet(session!.currentTestletId)}
+            disabled={advancing}
+            className="btn-primary py-2 px-4 text-sm"
+          >
+            {advancing ? 'Advancing...' : 'Complete Section →'}
+          </button>
+        ) : (
+          <button
+            onClick={() => setCurrentIdx(Math.min(questions.length - 1, currentIdx + 1))}
+            disabled={isLastQuestion}
+            className="btn-primary py-2 px-4 text-sm"
+          >
+            Next →
+          </button>
+        )}
       </div>
 
       {/* Submit modal */}
@@ -475,6 +508,11 @@ export default function ExamPlayer() {
                 </span>
               )}
             </p>
+            {isTestletExam && answeredCount < displayTotal && (
+              <p className="text-amber-700 bg-amber-50 border border-amber-200 rounded p-2 text-xs mb-3">
+                This exam has more sections. Use <strong>Complete Section →</strong> at the bottom to advance through all sections before submitting.
+              </p>
+            )}
             <div className="flex space-x-3">
               <button
                 onClick={() => setShowSubmitModal(false)}
