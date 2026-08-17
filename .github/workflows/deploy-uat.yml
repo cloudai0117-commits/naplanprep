@@ -258,8 +258,13 @@ jobs:
               for v in jwt_missing:
                   print(f'  MISSING: {v}  (set in Railway dashboard → Variables)')
               fail = True
-          if 'DATABASE_URL' not in var_names and 'PGHOST' not in var_names:
-              print('\nFAIL: No DATABASE_URL or PGHOST — datasource URL will resolve to localhost:5432')
+          # At least one DB host indicator must be present.
+          # Railway custom setups use SPRING_DATASOURCE_URL or DB_HOST (not DATABASE_URL/PGHOST).
+          db_host_present = any(v in var_names for v in
+              ['DATABASE_URL', 'PGHOST', 'SPRING_DATASOURCE_URL', 'DB_HOST'])
+          if not db_host_present:
+              print('\nFAIL: No DB host var found (need at least one of: DATABASE_URL, PGHOST, SPRING_DATASOURCE_URL, DB_HOST)')
+              print('  datasource URL will resolve to localhost:5432 — unreachable in Railway')
               fail = True
 
           if not fail:
@@ -268,6 +273,41 @@ jobs:
               print('\nRAILWAY_VARS_GATE = FAIL — fix missing variables before redeploying')
               sys.exit(1)
           PYEOF
+
+          # ── Fetch previous failing deployment logs for diagnosis ──────────────────
+          # Deployment a0be6bb3 (commit fbfbda6) crashed with Hikari timeout.
+          # Now that we have the RAILWAY_TOKEN, fetch its startup logs so we can
+          # identify the FIRST Spring Boot error before jpaSharedEM_entityManagerFactory.
+          PREV_FAIL_ID="a0be6bb3-518b-4ff0-a3db-ada7c4673823"
+          echo ""
+          echo "===== FETCHING PREVIOUS FAILING DEPLOYMENT LOGS (diagnostic) ====="
+          echo "Deployment ID: $PREV_FAIL_ID"
+          PREV_LOG=$(curl -s --max-time 30 -X POST "${{ env.RAILWAY_API }}" \
+            -H "Content-Type: application/json" \
+            -H "Authorization: Bearer ${{ secrets.RAILWAY_TOKEN }}" \
+            -d "{\"query\":\"{deploymentLogs(deploymentId:\\\"$PREV_FAIL_ID\\\",filter:null,limit:500){message timestamp severity}}\"}" 2>/dev/null || echo '{"error":"curl_failed"}')
+          echo "$PREV_LOG" | python3 -c "
+          import sys,json
+          try:
+              d=json.load(sys.stdin)
+          except:
+              print('(could not parse log response)')
+              sys.exit(0)
+          errs=d.get('errors',[])
+          for e in errs: print('GRAPHQL_ERROR:',e.get('message',''))
+          logs=(d.get('data') or {}).get('deploymentLogs',[]) or []
+          if not logs:
+              print('(no log entries returned for this deployment ID)')
+          else:
+              print(f'Total log entries: {len(logs)}')
+              for e in logs:
+                  msg=str(e.get('message',''))
+                  sev=str(e.get('severity',''))
+                  ts=str(e.get('timestamp',''))
+                  print(f'[{sev}] {ts} {msg}')
+          " 2>/dev/null || echo "(python3 parse failed)"
+          echo "===== END PREVIOUS DEPLOYMENT LOGS ====="
+          echo ""
 
           # ── Upsert extracted PG* vars into Railway if they were missing ────────────
           if [ -f /tmp/pg_extract.env ]; then
