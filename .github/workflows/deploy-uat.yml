@@ -161,62 +161,44 @@ jobs:
           head -c 2000 /tmp/railway_vars.json
 
           python3 << 'PYEOF'
-import json, sys
-try:
-    d = json.load(open('/tmp/railway_vars.json'))
-except Exception as e:
-    print(f'WARNING: Could not parse Railway variables response: {e}')
-    print('Skipping Stripe var check — proceeding to deploy')
-    sys.exit(0)
-
-errs = d.get('errors', [])
-if errs:
-    print('WARNING: Railway variables query returned errors:', json.dumps(errs))
-    print('Stripe var check skipped — proceeding (check Railway dashboard manually)')
-    sys.exit(0)
-
-vars_data = (d.get('data') or {}).get('variables', []) or []
-if not vars_data and not d.get('data'):
-    print('WARNING: variables query returned no data (schema may differ) — skipping check')
-    sys.exit(0)
-
-var_names = {v['name'] for v in vars_data if isinstance(v, dict) and 'name' in v}
-required_stripe = [
-    'STRIPE_SECRET_KEY',
-    'STRIPE_PUBLISHABLE_KEY',
-    'STRIPE_WEBHOOK_SECRET',
-    'STRIPE_ADVANCED_PRICE_ID',
-    'STRIPE_PRO_PRICE_ID',
-]
-missing = [v for v in required_stripe if v not in var_names]
-print(f'RAILWAY_VARIABLES_TOTAL={len(var_names)}')
-for v in required_stripe:
-    print(f'RAILWAY_VAR_{v}={"SET" if v in var_names else "MISSING"}')
-
-if missing:
-    print('')
-    print('FAIL: The following Stripe vars are NOT set in Railway:')
-    for v in missing:
-        print(f'  MISSING: {v}')
-    print('')
-    print('Spring Boot will crash on startup (StripeConfigValidator @Profile uat).')
-    print('Fix option A — set directly in Railway dashboard:')
-    print('  Railway → Project → Backend service → Variables → add each missing var')
-    print('Fix option B — add GitHub Actions secrets so CI sets them on next push:')
-    github_map = {
-        'STRIPE_SECRET_KEY':        'STRIPE_TEST_SECRET_KEY',
-        'STRIPE_PUBLISHABLE_KEY':   'STRIPE_TEST_PUBLISHABLE_KEY',
-        'STRIPE_WEBHOOK_SECRET':    'STRIPE_TEST_WEBHOOK_SECRET',
-        'STRIPE_ADVANCED_PRICE_ID': 'STRIPE_TEST_ADVANCED_PRICE_ID',
-        'STRIPE_PRO_PRICE_ID':      'STRIPE_TEST_PRO_PRICE_ID',
-    }
-    for v in missing:
-        print(f'  GitHub secret {github_map[v]} → sets Railway var {v}')
-    sys.exit(1)
-
-print('')
-print('STRIPE_VARS_RAILWAY_CHECK = PASS (all 5 Stripe vars are configured in Railway)')
-PYEOF
+          import json, sys
+          try:
+              d = json.load(open('/tmp/railway_vars.json'))
+          except Exception as e:
+              print('WARNING: Could not parse Railway variables response:', e)
+              print('Skipping Stripe var check — proceeding to deploy')
+              sys.exit(0)
+          errs = d.get('errors', [])
+          if errs:
+              print('WARNING: Railway variables query returned errors:', json.dumps(errs))
+              print('Stripe var check skipped — proceeding (check Railway dashboard manually)')
+              sys.exit(0)
+          vars_data = (d.get('data') or {}).get('variables', []) or []
+          if not vars_data and not d.get('data'):
+              print('WARNING: variables query returned no data (schema may differ) — skipping check')
+              sys.exit(0)
+          var_names = {v['name'] for v in vars_data if isinstance(v, dict) and 'name' in v}
+          required_stripe = ['STRIPE_SECRET_KEY','STRIPE_PUBLISHABLE_KEY','STRIPE_WEBHOOK_SECRET','STRIPE_ADVANCED_PRICE_ID','STRIPE_PRO_PRICE_ID']
+          missing = [v for v in required_stripe if v not in var_names]
+          print('RAILWAY_VARIABLES_TOTAL=' + str(len(var_names)))
+          for v in required_stripe:
+              print('RAILWAY_VAR_' + v + '=' + ('SET' if v in var_names else 'MISSING'))
+          if missing:
+              print('')
+              print('FAIL: The following Stripe vars are NOT set in Railway:')
+              for v in missing:
+                  print('  MISSING: ' + v)
+              print('')
+              print('Spring Boot will crash on startup (StripeConfigValidator @Profile uat).')
+              print('Fix A: set directly in Railway dashboard (Project → Backend → Variables)')
+              print('Fix B: add GitHub Actions secrets so CI sets them on next push:')
+              gh = {'STRIPE_SECRET_KEY':'STRIPE_TEST_SECRET_KEY','STRIPE_PUBLISHABLE_KEY':'STRIPE_TEST_PUBLISHABLE_KEY','STRIPE_WEBHOOK_SECRET':'STRIPE_TEST_WEBHOOK_SECRET','STRIPE_ADVANCED_PRICE_ID':'STRIPE_TEST_ADVANCED_PRICE_ID','STRIPE_PRO_PRICE_ID':'STRIPE_TEST_PRO_PRICE_ID'}
+              for v in missing:
+                  print('  GitHub secret ' + gh[v] + ' sets Railway var ' + v)
+              sys.exit(1)
+          print('')
+          print('STRIPE_VARS_RAILWAY_CHECK = PASS (all 5 Stripe vars are configured in Railway)')
+          PYEOF
 
       - name: Update Railway service source image
         # GHCR backend package is PUBLIC — no registry credentials needed.
