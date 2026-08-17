@@ -776,6 +776,124 @@ jobs:
           print("DB_INTEGRITY_GATE = PASS")
           EOF
 
+      - name: Verify API returns studentTestLength (not old questionCount)
+        # Gate: confirm the NEWLY deployed code is running, not a cached old image.
+        # The old AvailableExamResponse had `questionCount` (pool count).
+        # The new AvailableExamResponse has `studentTestLength` (student-facing length).
+        # If this check fails, old code is deployed — diagnose via Railway service source
+        # and GHCR registry credentials (see GHCR_PACKAGE_VISIBILITY_FIX_REPORT.md).
+        run: |
+          BASE_URL="${{ vars.UAT_API_URL }}"
+          TS=$(date +%s)
+          EMAIL="ci_ver_${TS}@naplanprep-ci.test"
+          PASS="CiVerify123!"
+
+          # Register + login
+          curl -s -o /dev/null --max-time 30 \
+            -X POST "$BASE_URL/auth/register" \
+            -H "Content-Type: application/json" \
+            -d "{\"email\":\"$EMAIL\",\"password\":\"$PASS\",\"firstName\":\"CI\",\"lastName\":\"Verify\",\"role\":\"STUDENT\"}"
+
+          LOGIN_HTTP=$(curl -s -o /tmp/ci_ver_login.json -w "%{http_code}" --max-time 30 \
+            -X POST "$BASE_URL/auth/login" \
+            -H "Content-Type: application/json" \
+            -d "{\"email\":\"$EMAIL\",\"password\":\"$PASS\"}")
+
+          if [ "$LOGIN_HTTP" != "200" ]; then
+            echo "FAIL: version-verify login returned HTTP $LOGIN_HTTP"
+            exit 1
+          fi
+
+          VER_TOKEN=$(python3 -c "import json; d=json.load(open('/tmp/ci_ver_login.json')); print(d.get('data',{}).get('accessToken',''))" 2>/dev/null || echo "")
+          rm -f /tmp/ci_ver_login.json
+          echo "::add-mask::$VER_TOKEN"
+
+          if [ -z "$VER_TOKEN" ]; then
+            echo "FAIL: version-verify login returned no accessToken"
+            exit 1
+          fi
+
+          # Call catalogue
+          CATALOG_HTTP=$(curl -s -o /tmp/ci_ver_catalog.json -w "%{http_code}" --max-time 30 \
+            -H "Authorization: Bearer $VER_TOKEN" \
+            "$BASE_URL/exams/available")
+
+          if [ "$CATALOG_HTTP" != "200" ]; then
+            echo "FAIL: /exams/available returned HTTP $CATALOG_HTTP"
+            exit 1
+          fi
+
+          python3 - <<'PYEOF'
+          import json, sys
+          with open('/tmp/ci_ver_catalog.json') as f:
+              d = json.load(f)
+          data = d.get('data', [])
+          print(f"CATALOGUE_COUNT: {len(data)}")
+          if not data:
+              print("FAIL: empty catalogue")
+              sys.exit(1)
+
+          sample = data[0]
+          keys = list(sample.keys())
+          print(f"RESPONSE_FIELDS: {keys}")
+
+          has_stl = 'studentTestLength' in keys
+          has_qc  = 'questionCount' in keys
+
+          if has_qc and not has_stl:
+              print()
+              print("FAIL: API returns 'questionCount' instead of 'studentTestLength'.")
+              print("      OLD CODE IS DEPLOYED. The Railway service is running a cached image")
+              print("      from before V381/V382 migrations were introduced.")
+              print()
+              print("      TO FIX:")
+              print("      Option A (preferred): Go to GitHub → Your profile → Packages →")
+              print("                            naplanprep-backend → Package settings →")
+              print("                            Change visibility → Public.")
+              print("                            Railway will then pull without credentials.")
+              print("      Option B: Configure Railway with GHCR pull credentials via Railway")
+              print("                dashboard → Service → Settings → Source → Registry creds.")
+              print()
+              print("      FORBIDDEN_POOL_COUNTS detected in response:")
+              forbidden = {96, 112, 128, 104, 72, 43}
+              pool_count_detected = set()
+              for e in data:
+                  qc = e.get('questionCount', 0)
+                  if qc in forbidden:
+                      pool_count_detected.add(qc)
+              if pool_count_detected:
+                  print(f"      Pool counts in API: {sorted(pool_count_detected)}")
+              sys.exit(1)
+
+          if not has_stl:
+              print()
+              print(f"FAIL: 'studentTestLength' field absent from API response. Fields: {keys}")
+              print("      New code not deployed or AvailableExamResponse mapping is broken.")
+              sys.exit(1)
+
+          # Spot-check: verify no forbidden pool counts appear as studentTestLength
+          forbidden = {96, 112, 128, 104, 72, 43}
+          violations = [(e.get('domain'), e.get('yearLevel'), e.get('packageType'), e.get('studentTestLength'))
+                        for e in data if e.get('studentTestLength') in forbidden]
+          if violations:
+              print()
+              print("FAIL: studentTestLength contains forbidden pool counts:")
+              for v in violations[:5]:
+                  print(f"      domain={v[0]} year={v[1]} pkg={v[2]} studentTestLength={v[3]}")
+              sys.exit(1)
+
+          # Spot-check: null or zero studentTestLength
+          null_count = sum(1 for e in data if not e.get('studentTestLength'))
+          print(f"NULL_OR_ZERO_STUDENT_TEST_LENGTH: {null_count}")
+          if null_count > 0:
+              print("FAIL: some exams have NULL/zero studentTestLength — V381/V382/V384 may not have run")
+              sys.exit(1)
+
+          print()
+          print("API_CODE_VERSION = PASS — studentTestLength present, no pool counts, no nulls")
+          PYEOF
+          rm -f /tmp/ci_ver_catalog.json
+
   deploy-frontend:
     name: Deploy Frontend to Vercel
     runs-on: ubuntu-latest
