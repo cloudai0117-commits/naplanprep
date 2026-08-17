@@ -145,6 +145,79 @@ jobs:
           railway_var "CI_SERVICE_PASSWORD"       "${{ secrets.CI_SERVICE_PASSWORD }}"
           echo "Env var step complete (failures are non-fatal — vars persist in Railway)"
 
+      - name: Verify Railway Stripe variables are set
+        # StripeConfigValidator (@Profile uat/prod) throws IllegalStateException at startup
+        # if any of these vars is missing/blank.  Fail fast here — before the 15-min
+        # deployment wait — so the error message is clear and actionable.
+        run: |
+          VAR_RESP=$(curl -s --max-time 30 -X POST "${{ env.RAILWAY_API }}" \
+            -H "Content-Type: application/json" \
+            -H "Authorization: Bearer ${{ secrets.RAILWAY_TOKEN }}" \
+            -d "{\"query\":\"{variables(serviceId:\\\"${{ env.RAILWAY_BACKEND_SERVICE_ID }}\\\",environmentId:\\\"${{ env.RAILWAY_ENV_ID }}\\\",projectId:\\\"${{ env.RAILWAY_PROJECT_ID }}\\\"){name value}}\"}") \
+          || VAR_RESP='{"error":"curl_failed"}'
+
+          echo "$VAR_RESP" > /tmp/railway_vars.json
+          echo "Railway variables API raw response (first 2000 chars):"
+          head -c 2000 /tmp/railway_vars.json
+
+          python3 << 'PYEOF'
+import json, sys
+try:
+    d = json.load(open('/tmp/railway_vars.json'))
+except Exception as e:
+    print(f'WARNING: Could not parse Railway variables response: {e}')
+    print('Skipping Stripe var check — proceeding to deploy')
+    sys.exit(0)
+
+errs = d.get('errors', [])
+if errs:
+    print('WARNING: Railway variables query returned errors:', json.dumps(errs))
+    print('Stripe var check skipped — proceeding (check Railway dashboard manually)')
+    sys.exit(0)
+
+vars_data = (d.get('data') or {}).get('variables', []) or []
+if not vars_data and not d.get('data'):
+    print('WARNING: variables query returned no data (schema may differ) — skipping check')
+    sys.exit(0)
+
+var_names = {v['name'] for v in vars_data if isinstance(v, dict) and 'name' in v}
+required_stripe = [
+    'STRIPE_SECRET_KEY',
+    'STRIPE_PUBLISHABLE_KEY',
+    'STRIPE_WEBHOOK_SECRET',
+    'STRIPE_ADVANCED_PRICE_ID',
+    'STRIPE_PRO_PRICE_ID',
+]
+missing = [v for v in required_stripe if v not in var_names]
+print(f'RAILWAY_VARIABLES_TOTAL={len(var_names)}')
+for v in required_stripe:
+    print(f'RAILWAY_VAR_{v}={"SET" if v in var_names else "MISSING"}')
+
+if missing:
+    print('')
+    print('FAIL: The following Stripe vars are NOT set in Railway:')
+    for v in missing:
+        print(f'  MISSING: {v}')
+    print('')
+    print('Spring Boot will crash on startup (StripeConfigValidator @Profile uat).')
+    print('Fix option A — set directly in Railway dashboard:')
+    print('  Railway → Project → Backend service → Variables → add each missing var')
+    print('Fix option B — add GitHub Actions secrets so CI sets them on next push:')
+    github_map = {
+        'STRIPE_SECRET_KEY':        'STRIPE_TEST_SECRET_KEY',
+        'STRIPE_PUBLISHABLE_KEY':   'STRIPE_TEST_PUBLISHABLE_KEY',
+        'STRIPE_WEBHOOK_SECRET':    'STRIPE_TEST_WEBHOOK_SECRET',
+        'STRIPE_ADVANCED_PRICE_ID': 'STRIPE_TEST_ADVANCED_PRICE_ID',
+        'STRIPE_PRO_PRICE_ID':      'STRIPE_TEST_PRO_PRICE_ID',
+    }
+    for v in missing:
+        print(f'  GitHub secret {github_map[v]} → sets Railway var {v}')
+    sys.exit(1)
+
+print('')
+print('STRIPE_VARS_RAILWAY_CHECK = PASS (all 5 Stripe vars are configured in Railway)')
+PYEOF
+
       - name: Update Railway service source image
         # GHCR backend package is PUBLIC — no registry credentials needed.
         # Railway plan does not support private registry credentials.
@@ -493,6 +566,7 @@ jobs:
                 echo "RAILWAY_BACKEND_UNHEALTHY — HTTP $HTTP persists after $((i * 20 + 30))s"
                 echo "The application failed to start. Check Railway deployment logs."
                 echo "Common causes:"
+                echo "  - StripeConfigValidator: missing STRIPE_* Railway vars (uat profile)"
                 echo "  - JWT_PRIVATE_KEY or JWT_PUBLIC_KEY Railway Variable not set"
                 echo "  - BeanCreationException for jwtTokenProvider"
                 echo "  - Flyway migration failure"
@@ -500,6 +574,31 @@ jobs:
                 if [ "$HTTP" = "502" ]; then
                   echo "HTTP 502 = Railway gateway — container did not start successfully"
                 fi
+                echo ""
+                echo "===== FETCHING RAILWAY DEPLOYMENT LOGS (Spring Boot startup failure) ====="
+                HEALTH_LOG_DEPLOY_ID="${{ steps.trigger-deploy.outputs.deployment-id }}"
+                if [ -n "$HEALTH_LOG_DEPLOY_ID" ]; then
+                  HEALTH_LOG_RESP=$(curl -s --max-time 30 -X POST "${{ env.RAILWAY_API }}" \
+                    -H "Content-Type: application/json" \
+                    -H "Authorization: Bearer ${{ secrets.RAILWAY_TOKEN }}" \
+                    -d "{\"query\":\"{deploymentLogs(deploymentId:\\\"$HEALTH_LOG_DEPLOY_ID\\\",filter:null,limit:200){message timestamp severity}}\"}" 2>/dev/null || echo '{"error":"curl_failed"}')
+                  echo "$HEALTH_LOG_RESP" | python3 -c "
+import sys,json
+try:
+    d=json.load(sys.stdin)
+except:
+    print('(could not parse log response)')
+    sys.exit(0)
+errs=d.get('errors',[])
+for e in errs: print('GRAPHQL_ERROR:',e.get('message',''))
+logs=(d.get('data') or {}).get('deploymentLogs',[]) or []
+print('(no log entries returned)') if not logs else [print('['+str(e.get('severity',''))+'] '+str(e.get('message',''))) for e in logs]
+" 2>/dev/null || echo "(python3 parse failed)"
+                else
+                  echo "(no deployment-id available — cannot fetch logs)"
+                fi
+                echo "===== END RAILWAY DEPLOYMENT LOGS ====="
+                echo ""
                 echo "BACKEND_HEALTH_HTTP=$HTTP"
                 echo "BACKEND_HEALTH_STATUS=DOWN"
                 exit 1
@@ -517,6 +616,30 @@ jobs:
           echo ""
           echo "TIMEOUT: Backend did not reach UP status within 8 minutes"
           echo "Railway deployment reached ACTIVE but Spring Boot failed to bind port."
+          echo ""
+          echo "===== FETCHING RAILWAY DEPLOYMENT LOGS (timeout diagnosis) ====="
+          TIMEOUT_LOG_DEPLOY_ID="${{ steps.trigger-deploy.outputs.deployment-id }}"
+          if [ -n "$TIMEOUT_LOG_DEPLOY_ID" ]; then
+            TIMEOUT_LOG_RESP=$(curl -s --max-time 30 -X POST "${{ env.RAILWAY_API }}" \
+              -H "Content-Type: application/json" \
+              -H "Authorization: Bearer ${{ secrets.RAILWAY_TOKEN }}" \
+              -d "{\"query\":\"{deploymentLogs(deploymentId:\\\"$TIMEOUT_LOG_DEPLOY_ID\\\",filter:null,limit:200){message timestamp severity}}\"}" 2>/dev/null || echo '{"error":"curl_failed"}')
+            echo "$TIMEOUT_LOG_RESP" | python3 -c "
+import sys,json
+try:
+    d=json.load(sys.stdin)
+except:
+    print('(could not parse log response)')
+    sys.exit(0)
+errs=d.get('errors',[])
+for e in errs: print('GRAPHQL_ERROR:',e.get('message',''))
+logs=(d.get('data') or {}).get('deploymentLogs',[]) or []
+print('(no log entries returned)') if not logs else [print('['+str(e.get('severity',''))+'] '+str(e.get('message',''))) for e in logs]
+" 2>/dev/null || echo "(python3 parse failed)"
+          else
+            echo "(no deployment-id — cannot fetch logs)"
+          fi
+          echo "===== END RAILWAY DEPLOYMENT LOGS ====="
           echo "BACKEND_HEALTH_HTTP=000"
           echo "BACKEND_HEALTH_STATUS=TIMEOUT"
           exit 1
