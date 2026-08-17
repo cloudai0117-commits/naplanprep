@@ -171,103 +171,81 @@ jobs:
 
           # ── Step A: Comprehensive Railway schema dump to find credential input type ──
           # ServiceInstanceSourceInput returns null → type name is wrong or doesn't exist.
-          # Dump ALL INPUT_OBJECT types: find any with credential/auth/username/password fields,
-          # or names containing source/docker/registry/credential/image.
-          # Also probe specific guesses by name.
+          # Dump ALL INPUT_OBJECT types + probe 8 specific type name guesses.
+          # ALL Python is in heredocs (saves to /tmp file) to avoid YAML block-scalar
+          # termination on 0-indented python code inside multi-line -c "..." strings.
           CRED_FIELD=""
-          SOURCE_TYPE_NAME=""
           if [ -n "$GHCR_READ_TOKEN" ]; then
             echo "::add-mask::$GHCR_READ_TOKEN"
             echo "GHCR_READ_TOKEN: present — scanning Railway schema for credential input type"
 
-            # Comprehensive: get ALL INPUT_OBJECT types in the schema
-            SCHEMA_TYPES=$(curl -s --max-time 30 -X POST "${{ env.RAILWAY_API }}" \
+            curl -s --max-time 30 -X POST "${{ env.RAILWAY_API }}" \
               -H "Content-Type: application/json" \
               -H "Authorization: Bearer ${{ secrets.RAILWAY_TOKEN }}" \
-              -d '{"query":"{ __schema { types { name kind inputFields { name } } } }"}')
+              -d '{"query":"{ __schema { types { name kind inputFields { name } } } }"}' \
+              > /tmp/railway_schema.json 2>/dev/null || echo '{}' > /tmp/railway_schema.json
 
             echo "--- Railway INPUT_OBJECT types (credential/source/docker/registry/image filter) ---"
-            echo "$SCHEMA_TYPES" | python3 -c "
-import sys, json
-d = json.load(sys.stdin)
-types = d.get('data', {}).get('__schema', {}).get('types', [])
-# Find input types relevant to source/credential configuration
-KEY_NAMES = {'credential','auth','username','password','registry','token'}
-KEY_IN_TYPE = {'source','docker','registry','credential','image','service'}
-interesting = []
-for t in types:
-    if t.get('kind') != 'INPUT_OBJECT':
-        continue
-    tname = (t.get('name') or '').lower()
-    fields = [f['name'] for f in (t.get('inputFields') or [])]
-    field_names_lower = {f.lower() for f in fields}
-    type_interesting = any(k in tname for k in KEY_IN_TYPE)
-    field_interesting = any(k in fn for fn in field_names_lower for k in KEY_NAMES)
-    if type_interesting or field_interesting:
-        interesting.append((t.get('name',''), fields))
-interesting.sort()
-if interesting:
-    for name, fields in interesting:
-        print(f'  TYPE: {name}')
-        print(f'    inputFields: {fields}')
-else:
-    print('  (no credential-related input types found)')
-" 2>/dev/null || echo "(schema dump failed — $SCHEMA_TYPES)"
+            python3 << 'PYEOF'
+          import json
+          d = json.load(open('/tmp/railway_schema.json'))
+          types = d.get('data', {}).get('__schema', {}).get('types', [])
+          KEY_NAMES = {'credential','auth','username','password','registry','token'}
+          KEY_IN_TYPE = {'source','docker','registry','credential','image','service'}
+          interesting = []
+          for t in types:
+              if t.get('kind') != 'INPUT_OBJECT':
+                  continue
+              tname = (t.get('name') or '').lower()
+              fields = [f['name'] for f in (t.get('inputFields') or [])]
+              field_names_lower = {f.lower() for f in fields}
+              type_interesting = any(k in tname for k in KEY_IN_TYPE)
+              field_interesting = any(k in fn for fn in field_names_lower for k in KEY_NAMES)
+              if type_interesting or field_interesting:
+                  interesting.append((t.get('name',''), fields))
+          interesting.sort()
+          for name, fields in interesting:
+              print(f'  TYPE: {name}')
+              print(f'    inputFields: {fields}')
+          if not interesting:
+              print('  (no credential-related input types found)')
+          PYEOF
 
-            # Also probe specific candidate type names by direct introspection
             echo ""
             echo "--- Direct type probes ---"
             for TYPE_GUESS in ServiceInstanceSourceInput ServiceSourceInput ServiceInstanceInput ServiceCreateInput DockerRegistryCredentials RegistryCredentials ServiceSource DockerImageSource; do
-              PROBE=$(curl -s --max-time 10 -X POST "${{ env.RAILWAY_API }}" \
+              curl -s --max-time 10 -X POST "${{ env.RAILWAY_API }}" \
                 -H "Content-Type: application/json" \
                 -H "Authorization: Bearer ${{ secrets.RAILWAY_TOKEN }}" \
-                -d "{\"query\":\"{ t: __type(name:\\\"${TYPE_GUESS}\\\") { kind inputFields { name } } }\"}")
-              PROBE_KIND=$(echo "$PROBE" | python3 -c "import sys,json; d=json.load(sys.stdin); t=d.get('data',{}).get('t'); print(t.get('kind','?') if t else 'NOT_FOUND')" 2>/dev/null || echo "ERR")
-              PROBE_FIELDS=$(echo "$PROBE" | python3 -c "import sys,json; d=json.load(sys.stdin); t=d.get('data',{}).get('t') or {}; print(' '.join(f['name'] for f in (t.get('inputFields') or [])))" 2>/dev/null || echo "")
+                -d "{\"query\":\"{ t: __type(name:\\\"${TYPE_GUESS}\\\") { kind inputFields { name } } }\"}" \
+                > /tmp/railway_probe.json 2>/dev/null || echo '{}' > /tmp/railway_probe.json
+              PROBE_KIND=$(python3 -c "import json; d=json.load(open('/tmp/railway_probe.json')); t=d.get('data',{}).get('t'); print(t.get('kind','?') if t else 'NOT_FOUND')" 2>/dev/null || echo "ERR")
+              PROBE_FIELDS=$(python3 -c "import json; d=json.load(open('/tmp/railway_probe.json')); t=d.get('data',{}).get('t') or {}; print(' '.join(f['name'] for f in (t.get('inputFields') or [])))" 2>/dev/null || echo "")
               echo "  ${TYPE_GUESS}: kind=${PROBE_KIND} inputFields=[${PROBE_FIELDS}]"
             done
 
-            # Extract the credential field from schema dump results
-            CRED_FIELD=$(echo "$SCHEMA_TYPES" | python3 -c "
-import sys, json
-d = json.load(sys.stdin)
-types = d.get('data', {}).get('__schema', {}).get('types', [])
-KEY_NAMES = {'credential','auth','username','password','registry','token'}
-KEY_IN_TYPE = {'source','docker','registry','credential','image'}
-CRED_CANDIDATES = ['imageCredentials','registryCredentials','dockerCredentials','credentials','auth']
-for t in types:
-    if t.get('kind') != 'INPUT_OBJECT': continue
-    tname = (t.get('name') or '').lower()
-    fields = [f['name'] for f in (t.get('inputFields') or [])]
-    type_interesting = any(k in tname for k in KEY_IN_TYPE)
-    if type_interesting:
-        for cand in CRED_CANDIDATES:
-            if cand in fields:
-                print(cand)
-                sys.exit(0)
-print('')
-" 2>/dev/null || echo "")
+            CRED_FIELD=$(python3 << 'PYEOF'
+          import json, sys
+          d = json.load(open('/tmp/railway_schema.json'))
+          types = d.get('data', {}).get('__schema', {}).get('types', [])
+          KEY_IN_TYPE = {'source','docker','registry','credential','image'}
+          CRED_CANDIDATES = ['imageCredentials','registryCredentials','dockerCredentials','credentials','auth']
+          for t in types:
+              if t.get('kind') != 'INPUT_OBJECT': continue
+              tname = (t.get('name') or '').lower()
+              fields = [f['name'] for f in (t.get('inputFields') or [])]
+              if any(k in tname for k in KEY_IN_TYPE):
+                  for cand in CRED_CANDIDATES:
+                      if cand in fields:
+                          print(cand)
+                          sys.exit(0)
+          print('')
+          PYEOF
+            )
 
             if [ -n "$CRED_FIELD" ]; then
-              echo ""
               echo "CREDENTIAL_FIELD_FOUND = $CRED_FIELD"
-              # Also find which type contains this field
-              SOURCE_TYPE_NAME=$(echo "$SCHEMA_TYPES" | python3 -c "
-import sys, json
-d = json.load(sys.stdin)
-types = d.get('data', {}).get('__schema', {}).get('types', [])
-cred_cands = ['imageCredentials','registryCredentials','dockerCredentials','credentials','auth']
-for t in types:
-    if t.get('kind') != 'INPUT_OBJECT': continue
-    fields = [f['name'] for f in (t.get('inputFields') or [])]
-    if any(c in fields for c in cred_cands) and 'source' in (t.get('name') or '').lower():
-        print(t.get('name',''))
-        sys.exit(0)
-print('')
-" 2>/dev/null || echo "")
-              echo "SOURCE_TYPE_NAME = ${SOURCE_TYPE_NAME:-unknown}"
             else
-              echo ""
               echo "PRIVATE_REGISTRY_EXISTING_SERVICE_SUPPORT = NO"
               echo "  No credential inputField found in any source-related INPUT_OBJECT type."
               echo "  Proceeding with image-only update — Railway does not support private"
