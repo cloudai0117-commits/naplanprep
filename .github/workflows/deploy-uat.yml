@@ -97,39 +97,6 @@ jobs:
           fi
           echo "GHCR_PUSH = PASS"
 
-      - name: Make GHCR backend package public
-        # Railway pulls images without authentication. The naplanprep-backend package
-        # must be public so Railway can pull uat-<sha> images without registry credentials.
-        # The GITHUB_TOKEN packages:write permission allows updating package visibility
-        # for packages owned by the repository's owner.
-        # If this step fails with 403, create a PAT with write:packages scope, add it as
-        # GHCR_PAT secret, and replace secrets.GITHUB_TOKEN below with secrets.GHCR_PAT.
-        run: |
-          PACKAGE_NAME="naplanprep-backend"
-          OWNER="${{ github.repository_owner }}"
-          echo "Setting $OWNER/$PACKAGE_NAME visibility → public"
-          RESP=$(curl -s -w "\nHTTP_STATUS:%{http_code}" \
-            -X PATCH \
-            -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
-            -H "Accept: application/vnd.github+json" \
-            -H "X-GitHub-Api-Version: 2022-11-28" \
-            "https://api.github.com/user/packages/container/${PACKAGE_NAME}" \
-            -d '{"visibility":"public"}')
-          HTTP_STATUS=$(echo "$RESP" | grep "HTTP_STATUS:" | cut -d: -f2)
-          BODY=$(echo "$RESP" | grep -v "HTTP_STATUS:")
-          echo "Response body: $BODY"
-          echo "HTTP status: $HTTP_STATUS"
-          if [ "$HTTP_STATUS" = "200" ]; then
-            echo "GHCR_PACKAGE_PUBLIC = PASS — Railway can now pull without credentials"
-          elif [ "$HTTP_STATUS" = "204" ]; then
-            echo "GHCR_PACKAGE_PUBLIC = PASS (204 No Content)"
-          else
-            echo "FAIL: Could not set package visibility to public (HTTP $HTTP_STATUS)."
-            echo "      ACTION REQUIRED: Create a PAT with write:packages scope, add as GHCR_PAT"
-            echo "      secret, and replace secrets.GITHUB_TOKEN with secrets.GHCR_PAT in this step."
-            exit 1
-          fi
-
   deploy-backend:
     name: Deploy Backend to Railway
     runs-on: ubuntu-latest
