@@ -243,45 +243,43 @@ jobs:
           PYEOF
             )
 
-            if [ -n "$CRED_FIELD" ]; then
-              echo "CREDENTIAL_FIELD_FOUND = $CRED_FIELD"
-            else
-              echo "PRIVATE_REGISTRY_EXISTING_SERVICE_SUPPORT = NO"
-              echo "  No credential inputField found in any source-related INPUT_OBJECT type."
-              echo "  Proceeding with image-only update — Railway does not support private"
-              echo "  registry credentials for existing services via GraphQL API."
-            fi
+            # The schema dump above confirms: registryCredentials is in ServiceInstanceUpdateInput
+            # (top-level input field, NOT inside source). CRED_FIELD detection was looking in
+            # source-related types — wrong level. Step B now hardcodes registryCredentials at input level.
+            echo "SCHEMA_DUMP = COMPLETE"
+            echo "REGISTRYCREDENTIALS_FIELD = CONFIRMED (ServiceInstanceUpdateInput.registryCredentials)"
           else
             echo "GHCR_READ_TOKEN not configured — image-only update (no credentials)"
           fi
 
-          # ── Step B: Build serviceInstanceUpdate payload (image + optional creds) ──
+          # ── Step B: Build serviceInstanceUpdate payload (image + registryCredentials) ──
+          # CRITICAL: registryCredentials is a TOP-LEVEL field in ServiceInstanceUpdateInput,
+          # NOT nested inside source. Schema confirmed:
+          #   ServiceInstanceUpdateInput { source, registryCredentials, startCommand, ... }
+          #   RegistryCredentialsInput   { username, password }
+          #   ServiceSourceInput         { image, repo }   ← no credential field here
           export RAILWAY_IMAGE="$IMAGE"
-          export RAILWAY_CRED_FIELD="${CRED_FIELD:-}"
           python3 << 'PYEOF'
           import json, os, sys
 
           svc_id = "${{ env.RAILWAY_BACKEND_SERVICE_ID }}"
           env_id = "${{ env.RAILWAY_ENV_ID }}"
           image  = os.environ.get('RAILWAY_IMAGE', '')
-          field  = os.environ.get('RAILWAY_CRED_FIELD', '')
           pat    = os.environ.get('GHCR_READ_TOKEN', '')
 
-          if field and pat:
-              source_gql = (
-                  'image:"' + image + '",'
-                  + field + ':{username:"cloudai0117-commits",password:"' + pat + '"}'
-              )
-              print(f"Payload: image={image}, credential={field} (PAT is masked in CI logs)")
+          if pat:
+              # registryCredentials is at input-level, not inside source
+              cred_gql = ',registryCredentials:{username:"cloudai0117-commits",password:"' + pat + '"}'
+              print(f"Payload: image={image}, registryCredentials set (PAT masked in CI logs)")
           else:
-              source_gql = 'image:"' + image + '"'
-              print(f"Payload: image={image}, no credentials")
+              cred_gql = ''
+              print(f"Payload: image={image}, no registryCredentials (GHCR_READ_TOKEN not set)")
 
           gql = (
               'mutation{serviceInstanceUpdate('
               + 'serviceId:"' + svc_id + '",'
               + 'environmentId:"' + env_id + '",'
-              + 'input:{source:{' + source_gql + '},startCommand:null}'
+              + 'input:{source:{image:"' + image + '"}' + cred_gql + ',startCommand:null}'
               + ')}'
           )
           with open('/tmp/svc_update_payload.json', 'w') as f:
@@ -335,10 +333,10 @@ jobs:
           fi
 
           echo "SERVICE_IMAGE_SOURCE_VERIFIED = PASS"
-          if [ -n "$CRED_FIELD" ]; then
-            echo "RAILWAY_GHCR_CREDENTIAL = CONFIGURED (field=$CRED_FIELD)"
+          if [ -n "$GHCR_READ_TOKEN" ]; then
+            echo "RAILWAY_GHCR_CREDENTIAL = CONFIGURED (registryCredentials at input level)"
           else
-            echo "RAILWAY_GHCR_CREDENTIAL = NOT_SET (no inputField found or token missing)"
+            echo "RAILWAY_GHCR_CREDENTIAL = NOT_SET (GHCR_READ_TOKEN secret not configured)"
           fi
           echo "SERVICE_IMAGE_UPDATE = PASS"
 
