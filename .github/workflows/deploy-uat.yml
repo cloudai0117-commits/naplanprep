@@ -145,158 +145,22 @@ jobs:
           railway_var "CI_SERVICE_PASSWORD"       "${{ secrets.CI_SERVICE_PASSWORD }}"
           echo "Env var step complete (failures are non-fatal — vars persist in Railway)"
 
-      - name: Update Railway service source — image and GHCR credentials
-        # Sets the exact immutable GHCR image (uat-<sha>) on Railway in ONE atomic call
-        # that also carries GHCR pull credentials so Railway can pull the private image.
-        #
-        # WHY ONE CALL: If credentials were set in a separate prior step and then the image
-        # were set again in a second step, the second serviceInstanceUpdate would overwrite
-        # (replace) the source object, wiping the credentials. One call prevents that.
-        #
-        # WHY inputFields: Railway's ServiceInstanceSourceInput is an INPUT_OBJECT type.
-        # GraphQL introspection uses `inputFields` for INPUT_OBJECT (not `fields`, which is
-        # for OBJECT types). The previous step used `fields` and always got empty — that was
-        # the reason credentials were never configured despite GHCR_READ_TOKEN being set.
-        #
-        # PAT (GHCR_READ_TOKEN) is masked via ::add-mask:: and passed exclusively as an env
-        # var to Python. It is never echoed, never in shell history, never in Railway env vars.
-        env:
-          GHCR_READ_TOKEN: ${{ secrets.GHCR_READ_TOKEN }}
+      - name: Update Railway service source image
+        # GHCR backend package is PUBLIC — no registry credentials needed.
+        # Railway plan does not support private registry credentials.
+        # Sets the exact immutable GHCR image (uat-<sha>) via serviceInstanceUpdate.
         run: |
           TAG="${{ needs.build-and-push.outputs.image-tag }}"
           IMAGE="${{ env.BACKEND_IMAGE }}:$TAG"
-          echo "===== UPDATE RAILWAY SERVICE SOURCE (IMAGE + GHCR CREDENTIALS) ====="
+          echo "===== UPDATE RAILWAY SERVICE SOURCE IMAGE ====="
           echo "EXPECTED_IMAGE=$IMAGE"
+          echo "GHCR_VISIBILITY=PUBLIC (no credentials required)"
           echo ""
 
-          # ── Step A: Comprehensive Railway schema dump to find credential input type ──
-          # ServiceInstanceSourceInput returns null → type name is wrong or doesn't exist.
-          # Dump ALL INPUT_OBJECT types + probe 8 specific type name guesses.
-          # ALL Python is in heredocs (saves to /tmp file) to avoid YAML block-scalar
-          # termination on 0-indented python code inside multi-line -c "..." strings.
-          CRED_FIELD=""
-          if [ -n "$GHCR_READ_TOKEN" ]; then
-            echo "::add-mask::$GHCR_READ_TOKEN"
-            echo "GHCR_READ_TOKEN: present — scanning Railway schema for credential input type"
-
-            curl -s --max-time 30 -X POST "${{ env.RAILWAY_API }}" \
-              -H "Content-Type: application/json" \
-              -H "Authorization: Bearer ${{ secrets.RAILWAY_TOKEN }}" \
-              -d '{"query":"{ __schema { types { name kind inputFields { name } } } }"}' \
-              > /tmp/railway_schema.json 2>/dev/null || echo '{}' > /tmp/railway_schema.json
-
-            echo "--- Railway INPUT_OBJECT types (credential/source/docker/registry/image filter) ---"
-            python3 << 'PYEOF'
-          import json
-          d = json.load(open('/tmp/railway_schema.json'))
-          types = d.get('data', {}).get('__schema', {}).get('types', [])
-          KEY_NAMES = {'credential','auth','username','password','registry','token'}
-          KEY_IN_TYPE = {'source','docker','registry','credential','image','service'}
-          interesting = []
-          for t in types:
-              if t.get('kind') != 'INPUT_OBJECT':
-                  continue
-              tname = (t.get('name') or '').lower()
-              fields = [f['name'] for f in (t.get('inputFields') or [])]
-              field_names_lower = {f.lower() for f in fields}
-              type_interesting = any(k in tname for k in KEY_IN_TYPE)
-              field_interesting = any(k in fn for fn in field_names_lower for k in KEY_NAMES)
-              if type_interesting or field_interesting:
-                  interesting.append((t.get('name',''), fields))
-          interesting.sort()
-          for name, fields in interesting:
-              print(f'  TYPE: {name}')
-              print(f'    inputFields: {fields}')
-          if not interesting:
-              print('  (no credential-related input types found)')
-          PYEOF
-
-            echo ""
-            echo "--- Direct type probes ---"
-            for TYPE_GUESS in ServiceInstanceSourceInput ServiceSourceInput ServiceInstanceInput ServiceCreateInput DockerRegistryCredentials RegistryCredentials ServiceSource DockerImageSource; do
-              curl -s --max-time 10 -X POST "${{ env.RAILWAY_API }}" \
-                -H "Content-Type: application/json" \
-                -H "Authorization: Bearer ${{ secrets.RAILWAY_TOKEN }}" \
-                -d "{\"query\":\"{ t: __type(name:\\\"${TYPE_GUESS}\\\") { kind inputFields { name } } }\"}" \
-                > /tmp/railway_probe.json 2>/dev/null || echo '{}' > /tmp/railway_probe.json
-              PROBE_KIND=$(python3 -c "import json; d=json.load(open('/tmp/railway_probe.json')); t=d.get('data',{}).get('t'); print(t.get('kind','?') if t else 'NOT_FOUND')" 2>/dev/null || echo "ERR")
-              PROBE_FIELDS=$(python3 -c "import json; d=json.load(open('/tmp/railway_probe.json')); t=d.get('data',{}).get('t') or {}; print(' '.join(f['name'] for f in (t.get('inputFields') or [])))" 2>/dev/null || echo "")
-              echo "  ${TYPE_GUESS}: kind=${PROBE_KIND} inputFields=[${PROBE_FIELDS}]"
-            done
-
-            CRED_FIELD=$(python3 << 'PYEOF'
-          import json, sys
-          d = json.load(open('/tmp/railway_schema.json'))
-          types = d.get('data', {}).get('__schema', {}).get('types', [])
-          KEY_IN_TYPE = {'source','docker','registry','credential','image'}
-          CRED_CANDIDATES = ['imageCredentials','registryCredentials','dockerCredentials','credentials','auth']
-          for t in types:
-              if t.get('kind') != 'INPUT_OBJECT': continue
-              tname = (t.get('name') or '').lower()
-              fields = [f['name'] for f in (t.get('inputFields') or [])]
-              if any(k in tname for k in KEY_IN_TYPE):
-                  for cand in CRED_CANDIDATES:
-                      if cand in fields:
-                          print(cand)
-                          sys.exit(0)
-          print('')
-          PYEOF
-            )
-
-            # The schema dump above confirms: registryCredentials is in ServiceInstanceUpdateInput
-            # (top-level input field, NOT inside source). CRED_FIELD detection was looking in
-            # source-related types — wrong level. Step B now hardcodes registryCredentials at input level.
-            echo "SCHEMA_DUMP = COMPLETE"
-            echo "REGISTRYCREDENTIALS_FIELD = CONFIRMED (ServiceInstanceUpdateInput.registryCredentials)"
-          else
-            echo "GHCR_READ_TOKEN not configured — image-only update (no credentials)"
-          fi
-
-          # ── Step B: Build serviceInstanceUpdate payload (image + registryCredentials) ──
-          # CRITICAL: registryCredentials is a TOP-LEVEL field in ServiceInstanceUpdateInput,
-          # NOT nested inside source. Schema confirmed:
-          #   ServiceInstanceUpdateInput { source, registryCredentials, startCommand, ... }
-          #   RegistryCredentialsInput   { username, password }
-          #   ServiceSourceInput         { image, repo }   ← no credential field here
-          export RAILWAY_IMAGE="$IMAGE"
-          python3 << 'PYEOF'
-          import json, os, sys
-
-          svc_id = "${{ env.RAILWAY_BACKEND_SERVICE_ID }}"
-          env_id = "${{ env.RAILWAY_ENV_ID }}"
-          image  = os.environ.get('RAILWAY_IMAGE', '')
-          pat    = os.environ.get('GHCR_READ_TOKEN', '')
-
-          if pat:
-              # registryCredentials is at input-level, not inside source
-              cred_gql = ',registryCredentials:{username:"cloudai0117-commits",password:"' + pat + '"}'
-              print(f"Payload: image={image}, registryCredentials set (PAT masked in CI logs)")
-          else:
-              cred_gql = ''
-              print(f"Payload: image={image}, no registryCredentials (GHCR_READ_TOKEN not set)")
-
-          gql = (
-              'mutation{serviceInstanceUpdate('
-              + 'serviceId:"' + svc_id + '",'
-              + 'environmentId:"' + env_id + '",'
-              + 'input:{source:{image:"' + image + '"}' + cred_gql + ',startCommand:null}'
-              + ')}'
-          )
-          with open('/tmp/svc_update_payload.json', 'w') as f:
-              f.write(json.dumps({'query': gql}))
-          PYEOF
-
-          if [ $? -ne 0 ]; then
-            echo "FAIL: Could not build serviceInstanceUpdate payload"
-            exit 1
-          fi
-
-          # ── Step C: Execute the update ────────────────────────────────────────────
           UPDATE_RESP=$(curl -s --max-time 30 -X POST "${{ env.RAILWAY_API }}" \
             -H "Content-Type: application/json" \
             -H "Authorization: Bearer ${{ secrets.RAILWAY_TOKEN }}" \
-            -d @/tmp/svc_update_payload.json)
-          rm -f /tmp/svc_update_payload.json
+            -d "{\"query\":\"mutation{serviceInstanceUpdate(serviceId:\\\"${{ env.RAILWAY_BACKEND_SERVICE_ID }}\\\",environmentId:\\\"${{ env.RAILWAY_ENV_ID }}\\\",input:{source:{image:\\\"${IMAGE}\\\"},startCommand:null})}\"}")
 
           echo "serviceInstanceUpdate response:"
           echo "$UPDATE_RESP" | python3 -m json.tool 2>/dev/null || echo "$UPDATE_RESP"
@@ -333,11 +197,7 @@ jobs:
           fi
 
           echo "SERVICE_IMAGE_SOURCE_VERIFIED = PASS"
-          if [ -n "$GHCR_READ_TOKEN" ]; then
-            echo "RAILWAY_GHCR_CREDENTIAL = CONFIGURED (registryCredentials at input level)"
-          else
-            echo "RAILWAY_GHCR_CREDENTIAL = NOT_SET (GHCR_READ_TOKEN secret not configured)"
-          fi
+          echo "GHCR_VISIBILITY = PUBLIC (no credentials required)"
           echo "SERVICE_IMAGE_UPDATE = PASS"
 
       - name: Deploy new Railway service image
@@ -990,13 +850,10 @@ jobs:
               print("      from before V381/V382 migrations were introduced.")
               print()
               print("      TO FIX:")
-              print("      Railway cannot pull the private GHCR image. GHCR_READ_TOKEN (GitHub PAT,")
-              print("      read:packages scope) must be set as a GitHub Actions secret so CI can")
-              print("      configure Railway's GHCR pull credentials via serviceInstanceUpdate.")
-              print("      1. Ensure GHCR_READ_TOKEN is set in Repository → Settings → Secrets → Actions")
-              print("      2. Re-run CI — the 'Update Railway service source' step sets Railway credentials")
-              print("         via GraphQL API (Railway UI has no credential field for existing services).")
-              print("      See RAILWAY_GHCR_PRIVATE_REGISTRY_SETUP.md for PAT setup instructions.")
+              print("      Railway may not have pulled the new GHCR image. Verify:")
+              print("      1. ghcr.io/cloudai0117-commits/naplanprep-backend is PUBLIC")
+              print("      2. Railway service source image matches the uat-<sha> tag in this CI run")
+              print("      3. Check Railway deployment logs for image pull errors")
               print()
               print("      FORBIDDEN_POOL_COUNTS detected in response:")
               forbidden = {96, 112, 128, 104, 72, 43}
