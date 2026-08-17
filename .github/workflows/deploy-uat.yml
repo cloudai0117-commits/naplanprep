@@ -565,17 +565,17 @@ jobs:
                     -H "Authorization: Bearer ${{ secrets.RAILWAY_TOKEN }}" \
                     -d "{\"query\":\"{deploymentLogs(deploymentId:\\\"$HEALTH_LOG_DEPLOY_ID\\\",filter:null,limit:200){message timestamp severity}}\"}" 2>/dev/null || echo '{"error":"curl_failed"}')
                   echo "$HEALTH_LOG_RESP" | python3 -c "
-import sys,json
-try:
-    d=json.load(sys.stdin)
-except:
-    print('(could not parse log response)')
-    sys.exit(0)
-errs=d.get('errors',[])
-for e in errs: print('GRAPHQL_ERROR:',e.get('message',''))
-logs=(d.get('data') or {}).get('deploymentLogs',[]) or []
-print('(no log entries returned)') if not logs else [print('['+str(e.get('severity',''))+'] '+str(e.get('message',''))) for e in logs]
-" 2>/dev/null || echo "(python3 parse failed)"
+          import sys,json
+          try:
+              d=json.load(sys.stdin)
+          except:
+              print('(could not parse log response)')
+              sys.exit(0)
+          errs=d.get('errors',[])
+          for e in errs: print('GRAPHQL_ERROR:',e.get('message',''))
+          logs=(d.get('data') or {}).get('deploymentLogs',[]) or []
+          print('(no log entries returned)') if not logs else [print('['+str(e.get('severity',''))+'] '+str(e.get('message',''))) for e in logs]
+          " 2>/dev/null || echo "(python3 parse failed)"
                 else
                   echo "(no deployment-id available — cannot fetch logs)"
                 fi
@@ -607,17 +607,17 @@ print('(no log entries returned)') if not logs else [print('['+str(e.get('severi
               -H "Authorization: Bearer ${{ secrets.RAILWAY_TOKEN }}" \
               -d "{\"query\":\"{deploymentLogs(deploymentId:\\\"$TIMEOUT_LOG_DEPLOY_ID\\\",filter:null,limit:200){message timestamp severity}}\"}" 2>/dev/null || echo '{"error":"curl_failed"}')
             echo "$TIMEOUT_LOG_RESP" | python3 -c "
-import sys,json
-try:
-    d=json.load(sys.stdin)
-except:
-    print('(could not parse log response)')
-    sys.exit(0)
-errs=d.get('errors',[])
-for e in errs: print('GRAPHQL_ERROR:',e.get('message',''))
-logs=(d.get('data') or {}).get('deploymentLogs',[]) or []
-print('(no log entries returned)') if not logs else [print('['+str(e.get('severity',''))+'] '+str(e.get('message',''))) for e in logs]
-" 2>/dev/null || echo "(python3 parse failed)"
+          import sys,json
+          try:
+              d=json.load(sys.stdin)
+          except:
+              print('(could not parse log response)')
+              sys.exit(0)
+          errs=d.get('errors',[])
+          for e in errs: print('GRAPHQL_ERROR:',e.get('message',''))
+          logs=(d.get('data') or {}).get('deploymentLogs',[]) or []
+          print('(no log entries returned)') if not logs else [print('['+str(e.get('severity',''))+'] '+str(e.get('message',''))) for e in logs]
+          " 2>/dev/null || echo "(python3 parse failed)"
           else
             echo "(no deployment-id — cannot fetch logs)"
           fi
