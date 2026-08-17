@@ -191,13 +191,7 @@ jobs:
           echo "--- ServiceInstanceSourceInput schema ---"
           echo "$INSP" | python3 -m json.tool 2>/dev/null || echo "$INSP"
 
-          SOURCE_FIELDS=$(echo "$INSP" | python3 -c "
-import sys, json
-d = json.load(sys.stdin)
-src = (d.get('data') or {}).get('src') or {}
-names = [f['name'] for f in (src.get('fields') or [])]
-print(' '.join(names))
-" 2>/dev/null || echo "")
+          SOURCE_FIELDS=$(echo "$INSP" | python3 -c "import sys,json; d=json.load(sys.stdin); src=(d.get('data') or {}).get('src') or {}; names=[f['name'] for f in (src.get('fields') or [])]; print(' '.join(names))" 2>/dev/null || echo "")
 
           echo "Available source fields: $SOURCE_FIELDS"
 
@@ -276,12 +270,7 @@ print(' '.join(names))
           echo "serviceInstanceUpdate (with credentials) response:"
           echo "$CRED_RESP" | python3 -m json.tool 2>/dev/null || echo "$CRED_RESP"
 
-          GQL_ERRORS=$(echo "$CRED_RESP" | python3 -c "
-import sys, json
-d = json.load(sys.stdin)
-errs = d.get('errors', [])
-print('ERRORS: ' + json.dumps(errs) if errs else 'OK')
-" 2>/dev/null || echo "PARSE_ERROR")
+          GQL_ERRORS=$(echo "$CRED_RESP" | python3 -c "import sys,json; d=json.load(sys.stdin); errs=d.get('errors',[]); print('ERRORS: '+json.dumps(errs) if errs else 'OK')" 2>/dev/null || echo "PARSE_ERROR")
 
           if [ "$GQL_ERRORS" = "OK" ]; then
             echo ""
