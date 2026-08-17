@@ -115,6 +115,152 @@ class BranchingEngineTest {
         assertThat(engine.resolveNext(sourceId, 0.5)).contains(hardTarget);
     }
 
+    // ── Y9 Numeracy path tests (actual DB thresholds from V295) ──────────────────
+    // Valid paths: A→B→C, A→B→E, A→D→C, A→D→F, A→C_EARLY→B_LATE
+    // Thresholds: A: SCORE_BELOW 0.35 (C_EARLY), SCORE_ABOVE 0.65 (D), ALWAYS (B)
+    //             B: SCORE_ABOVE 0.70 (E), ALWAYS (C)
+    //             D: SCORE_ABOVE 0.70 (F), ALWAYS (C)
+    //             C_EARLY: ALWAYS (B_LATE)
+    //             C, E, F, B_LATE: no transitions → empty → pathComplete
+
+    @Test
+    void y9Num_fromA_lowScore_routesToC_EARLY() {
+        UUID testletA      = UUID.fromString("f8044b83-592b-5fc9-9135-13fa2eef6fcb");
+        UUID testletC_EARLY = UUID.fromString("55d43880-2ba2-5c60-8c40-2f78b4c6a490");
+        UUID testletD      = UUID.fromString("026c3f65-6c73-523c-a543-2c4fd71dc62b");
+        UUID testletB      = UUID.fromString("592636f1-6ee7-56d9-952a-8ffd673ca372");
+
+        when(transitionRepository.findBySourceTestletIdOrderByPriorityDesc(testletA))
+            .thenReturn(List.of(
+                transition(testlet(testletC_EARLY), TestletTransition.ConditionType.SCORE_BELOW, Map.of("threshold", 0.35), 30),
+                transition(testlet(testletD),       TestletTransition.ConditionType.SCORE_ABOVE, Map.of("threshold", 0.65), 20),
+                transition(testlet(testletB),       TestletTransition.ConditionType.ALWAYS, null, 0)
+            ));
+
+        // score < 0.35 → C_EARLY
+        assertThat(engine.resolveNext(testletA, 0.00)).contains(testletC_EARLY);
+        assertThat(engine.resolveNext(testletA, 0.20)).contains(testletC_EARLY);
+        assertThat(engine.resolveNext(testletA, 0.34)).contains(testletC_EARLY);
+        // boundary: 0.35 is NOT below 0.35, so falls through
+        assertThat(engine.resolveNext(testletA, 0.35)).contains(testletB);
+    }
+
+    @Test
+    void y9Num_fromA_midScore_routesToB() {
+        UUID testletA       = UUID.fromString("f8044b83-592b-5fc9-9135-13fa2eef6fcb");
+        UUID testletC_EARLY = UUID.fromString("55d43880-2ba2-5c60-8c40-2f78b4c6a490");
+        UUID testletD       = UUID.fromString("026c3f65-6c73-523c-a543-2c4fd71dc62b");
+        UUID testletB       = UUID.fromString("592636f1-6ee7-56d9-952a-8ffd673ca372");
+
+        when(transitionRepository.findBySourceTestletIdOrderByPriorityDesc(testletA))
+            .thenReturn(List.of(
+                transition(testlet(testletC_EARLY), TestletTransition.ConditionType.SCORE_BELOW, Map.of("threshold", 0.35), 30),
+                transition(testlet(testletD),       TestletTransition.ConditionType.SCORE_ABOVE, Map.of("threshold", 0.65), 20),
+                transition(testlet(testletB),       TestletTransition.ConditionType.ALWAYS, null, 0)
+            ));
+
+        // 0.35 ≤ score ≤ 0.65 → B
+        assertThat(engine.resolveNext(testletA, 0.35)).contains(testletB);
+        assertThat(engine.resolveNext(testletA, 0.50)).contains(testletB);
+        assertThat(engine.resolveNext(testletA, 0.65)).contains(testletB);
+        // boundary: 0.65 is NOT above 0.65
+        assertThat(engine.resolveNext(testletA, 0.651)).contains(testletD);
+    }
+
+    @Test
+    void y9Num_fromA_highScore_routesToD() {
+        UUID testletA       = UUID.fromString("f8044b83-592b-5fc9-9135-13fa2eef6fcb");
+        UUID testletC_EARLY = UUID.fromString("55d43880-2ba2-5c60-8c40-2f78b4c6a490");
+        UUID testletD       = UUID.fromString("026c3f65-6c73-523c-a543-2c4fd71dc62b");
+        UUID testletB       = UUID.fromString("592636f1-6ee7-56d9-952a-8ffd673ca372");
+
+        when(transitionRepository.findBySourceTestletIdOrderByPriorityDesc(testletA))
+            .thenReturn(List.of(
+                transition(testlet(testletC_EARLY), TestletTransition.ConditionType.SCORE_BELOW, Map.of("threshold", 0.35), 30),
+                transition(testlet(testletD),       TestletTransition.ConditionType.SCORE_ABOVE, Map.of("threshold", 0.65), 20),
+                transition(testlet(testletB),       TestletTransition.ConditionType.ALWAYS, null, 0)
+            ));
+
+        // score > 0.65 → D
+        assertThat(engine.resolveNext(testletA, 0.70)).contains(testletD);
+        assertThat(engine.resolveNext(testletA, 0.80)).contains(testletD);
+        assertThat(engine.resolveNext(testletA, 1.00)).contains(testletD);
+    }
+
+    @Test
+    void y9Num_fromB_routesToE_or_C() {
+        UUID testletB = UUID.fromString("592636f1-6ee7-56d9-952a-8ffd673ca372");
+        UUID testletE = UUID.fromString("eb908d15-1c34-5619-adec-1455d9d6e2a0");
+        UUID testletC = UUID.fromString("8b998744-f963-5d7d-b911-e616a6f07d6a");
+
+        when(transitionRepository.findBySourceTestletIdOrderByPriorityDesc(testletB))
+            .thenReturn(List.of(
+                transition(testlet(testletE), TestletTransition.ConditionType.SCORE_ABOVE, Map.of("threshold", 0.7), 10),
+                transition(testlet(testletC), TestletTransition.ConditionType.ALWAYS, null, 0)
+            ));
+
+        // path A→B→E
+        assertThat(engine.resolveNext(testletB, 0.71)).contains(testletE);
+        assertThat(engine.resolveNext(testletB, 1.00)).contains(testletE);
+        // path A→B→C
+        assertThat(engine.resolveNext(testletB, 0.70)).contains(testletC);
+        assertThat(engine.resolveNext(testletB, 0.50)).contains(testletC);
+        assertThat(engine.resolveNext(testletB, 0.00)).contains(testletC);
+    }
+
+    @Test
+    void y9Num_fromD_routesToF_or_C() {
+        UUID testletD = UUID.fromString("026c3f65-6c73-523c-a543-2c4fd71dc62b");
+        UUID testletF = UUID.fromString("854e6d58-3adc-5de7-8c63-0c2bc6c8b3db");
+        UUID testletC = UUID.fromString("8b998744-f963-5d7d-b911-e616a6f07d6a");
+
+        when(transitionRepository.findBySourceTestletIdOrderByPriorityDesc(testletD))
+            .thenReturn(List.of(
+                transition(testlet(testletF), TestletTransition.ConditionType.SCORE_ABOVE, Map.of("threshold", 0.7), 10),
+                transition(testlet(testletC), TestletTransition.ConditionType.ALWAYS, null, 0)
+            ));
+
+        // path A→D→F
+        assertThat(engine.resolveNext(testletD, 0.71)).contains(testletF);
+        assertThat(engine.resolveNext(testletD, 1.00)).contains(testletF);
+        // path A→D→C
+        assertThat(engine.resolveNext(testletD, 0.70)).contains(testletC);
+        assertThat(engine.resolveNext(testletD, 0.50)).contains(testletC);
+    }
+
+    @Test
+    void y9Num_fromC_EARLY_alwaysRoutesToB_LATE() {
+        UUID testletC_EARLY = UUID.fromString("55d43880-2ba2-5c60-8c40-2f78b4c6a490");
+        UUID testletB_LATE  = UUID.fromString("65467866-6bad-576f-9345-38d4d27e905d");
+
+        when(transitionRepository.findBySourceTestletIdOrderByPriorityDesc(testletC_EARLY))
+            .thenReturn(List.of(
+                transition(testlet(testletB_LATE), TestletTransition.ConditionType.ALWAYS, null, 0)
+            ));
+
+        // path A→C_EARLY→B_LATE regardless of score
+        assertThat(engine.resolveNext(testletC_EARLY, 0.0)).contains(testletB_LATE);
+        assertThat(engine.resolveNext(testletC_EARLY, 0.5)).contains(testletB_LATE);
+        assertThat(engine.resolveNext(testletC_EARLY, 1.0)).contains(testletB_LATE);
+    }
+
+    @Test
+    void y9Num_terminalTestlets_returnEmpty() {
+        // C, E, F, B_LATE have no outgoing transitions → path ends → auto-submit
+        UUID testletC      = UUID.fromString("8b998744-f963-5d7d-b911-e616a6f07d6a");
+        UUID testletE      = UUID.fromString("eb908d15-1c34-5619-adec-1455d9d6e2a0");
+        UUID testletF      = UUID.fromString("854e6d58-3adc-5de7-8c63-0c2bc6c8b3db");
+        UUID testletB_LATE = UUID.fromString("65467866-6bad-576f-9345-38d4d27e905d");
+
+        for (UUID terminal : List.of(testletC, testletE, testletF, testletB_LATE)) {
+            when(transitionRepository.findBySourceTestletIdOrderByPriorityDesc(terminal))
+                .thenReturn(List.of());
+            assertThat(engine.resolveNext(terminal, 0.5))
+                .as("Terminal testlet %s must return empty → pathComplete=true", terminal)
+                .isEmpty();
+        }
+    }
+
     // ── Helpers ───────────────────────────────────────────────────
 
     private Testlet testlet(UUID id) {
