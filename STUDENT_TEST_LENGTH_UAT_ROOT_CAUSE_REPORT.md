@@ -189,31 +189,29 @@ regardless of whether V381/V382 ran completely.
 
 ---
 
-## Required Manual Action to Fix Deployment
+## Required Action to Fix Deployment
 
-The root cause is Railway not running the new Docker image. One of these must be resolved:
+The root cause is Railway not running the new Docker image. Chosen approach:
 
-### Option A — Preferred: Make naplanprep-backend GHCR package public (one-time)
-```
-GitHub → Your profile → Packages → naplanprep-backend → Package settings
-→ Change visibility → Public
-```
-Railway will then be able to pull the image without credentials.
-No changes to CI or Railway required.
+### Option B applied — CI configures Railway credentials via Railway GraphQL API
 
-### Option B — Configure Railway with GHCR registry credentials (one-time)
-```
-Railway dashboard → Backend service → Settings → Source → Registry credentials
-→ Add credential: ghcr.io / username: cloudai0117-commits / token: [PAT with read:packages scope]
-```
-Creates a PAT with ONLY `read:packages` scope (minimum required for pull).
-Do NOT store the PAT in CI secrets or source code.
+Railway's dashboard Settings → Source shows only a Docker image edit control —
+**there is no credential field in the UI**. Credentials are configured by CI automatically
+on every push using Railway's GraphQL `serviceInstanceUpdate` mutation.
 
-### Why not in CI
-- `GITHUB_TOKEN` cannot change GHCR package visibility (requires `write:packages` OAuth scope,
-  not the fine-grained `packages: write` workflow permission)
-- Railway does not accept registry credentials via environment variables
-- Both require a one-time human action, not a per-build CI step
+**CI mechanism (step: "Configure GHCR pull credentials on Railway"):**
+1. Introspects `ServiceInstanceSourceInput` type to find credential field name
+2. Calls `serviceInstanceUpdate({image: uat-<sha>, <credField>: {username, password}})`
+3. Reports `PRIVATE_REGISTRY_AUTH_SUPPORTED` and `CURRENT_CREDENTIAL_CONFIGURED`
+
+**Required one-time human action:**
+Add `GHCR_READ_TOKEN` as a GitHub Actions secret (GitHub classic PAT, `read:packages` scope only).
+See `RAILWAY_GHCR_PRIVATE_REGISTRY_SETUP.md` for full instructions.
+
+**What NOT to do:**
+- Do NOT make the package public — keep PRIVATE
+- Do NOT store PAT in Railway env vars or source code
+- Do NOT use Option A (visibility change) — Option B is implemented and sufficient
 
 ---
 

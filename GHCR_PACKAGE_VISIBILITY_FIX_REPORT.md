@@ -47,12 +47,16 @@ Vercel deploys frontend and admin directly from source code using the Vercel CLI
 (`vercel --prod`). The Docker images pushed to GHCR for frontend and admin serve no purpose in  
 the current deployment pipeline and no visibility change is required for them.
 
-### Railway already has GHCR credentials
+### Railway UI has no credential field
 
-The last confirmed fully-passing UAT deploy (`afdc04d`, run 31954499806) executed successfully  
-with `naplanprep-backend` already PRIVATE. Railway must therefore have GHCR registry credentials  
-configured in its service dashboard (set once during initial project setup).  
-Making the package public is not required for Railway to pull it.
+Railway Settings → Source shows only a Docker image edit control. There is no visible
+"Add registry credential" field for an existing Docker-image service. Credentials must be
+configured via Railway's GraphQL API (`serviceInstanceUpdate`), not the dashboard.
+
+CI now handles this automatically: the "Configure GHCR pull credentials on Railway" step
+introspects `ServiceInstanceSourceInput`, finds the credential field name, and sets it on
+every push. See `RAILWAY_GHCR_PRIVATE_REGISTRY_SETUP.md` for the required `GHCR_READ_TOKEN`
+GitHub Actions secret setup.
 
 ### CI should never manage package visibility on every build
 
@@ -96,16 +100,17 @@ actually persist in Railway, CI aborts immediately instead of triggering a stale
 
 ## If Railway Pull Fails in the Future
 
-If a future CI run fails because Railway cannot pull the private GHCR image (e.g., credentials  
-expired), the fix is **not** to add a visibility API call to CI. Instead, reconfigure Railway  
-registry credentials once:
+If a future CI run fails because Railway cannot pull the private GHCR image (e.g., PAT expired),
+the fix is **not** to add a visibility API call to CI. Instead:
 
-**Railway Dashboard → Service → Settings → Source → Image Source → Add registry credentials**  
-- Registry: `ghcr.io`  
-- Username: `cloudai0117-commits` (the GitHub username that owns the package)  
-- Password: A GitHub PAT with `read:packages` scope (minimum required for pull only)
+1. Rotate `GHCR_READ_TOKEN` GitHub Actions secret with a new PAT (`read:packages` only)
+2. Re-run CI — the "Configure GHCR pull credentials on Railway" step will push the new PAT
+   to Railway automatically via `serviceInstanceUpdate`
 
-This is a one-time administrative action. It does not need to be in CI.
+See `RAILWAY_GHCR_PRIVATE_REGISTRY_SETUP.md` → Credential Rotation.
+
+**Railway UI has no credential field** for this service — do not look for one in the dashboard.
+All credential management goes through the Railway GraphQL API via CI.
 
 ---
 
@@ -126,9 +131,14 @@ GHCR_PUSH               = PASS  (packages:write on GITHUB_TOKEN is sufficient)
 PACKAGE_VISIBILITY_API_REQUIRED  = NO
 PACKAGE_VISIBILITY_STEP_REMOVED  = YES
 
-GHCR_PAT_REQUIRED       = NO  (Railway pulls with its own configured credentials)
+GHCR_PAT_REQUIRED       = YES (GHCR_READ_TOKEN GitHub Actions secret, read:packages only)
+GHCR_PAT_IN_YAML        = NO  (referenced as ${{ secrets.GHCR_READ_TOKEN }}, value encrypted)
+GHCR_PAT_TO_RAILWAY     = YES (CI calls serviceInstanceUpdate with credential field)
+GHCR_PAT_IN_APP_VARS    = NO  (never set as Railway env var)
 
-RAILWAY_IMAGE_PULL      = PASS  (inferred from afdc04d success with private package)
+RAILWAY_UI_CREDENTIAL   = NOT_AVAILABLE (no UI field for existing service)
+RAILWAY_API_CREDENTIAL  = CI-MANAGED (serviceInstanceUpdate on every push)
+RAILWAY_IMAGE_PULL      = PENDING (next CI run after GHCR_READ_TOKEN secret is added)
 
 UAT_BUILD               = PENDING  (next CI run will confirm)
 UAT_DEPLOYMENT          = PENDING
