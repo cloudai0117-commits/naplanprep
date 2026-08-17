@@ -82,6 +82,11 @@ class ExamFlowIntegrationTest {
         exam.setTitle("Integration Test Exam");
         exam = examRepository.save(exam);
         TestExamFactory.assertStudentTestLengthSet(exam);
+        // This test exercises flow mechanics with 1 question. Override the factory-default Y5
+        // value (42) so calculateAndSaveResult() uses 1 and the flow assertions stay deterministic.
+        // Production behaviour is correct: real Y5 Numeracy exams have studentTestLength=42.
+        exam.setStudentTestLength(1);
+        exam = examRepository.save(exam);
 
         ExamQuestion eq = new ExamQuestion();
         eq.setId(new ExamQuestion.ExamQuestionId(exam.getId(), question.getId()));
