@@ -11,16 +11,23 @@ spring:
     hibernate:
       ddl-auto: none
   datasource:
-    # Railway injects DATABASE_URL (postgresql://user:pass@host:port/db) — use it directly if available,
-    # otherwise fall back to individual DB_HOST/DB_PORT vars set manually in Railway dashboard
-    url: ${DATABASE_URL:${SPRING_DATASOURCE_URL:jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:naplanprep_uat}}}
-    username: ${DB_USERNAME:${PGUSER:postgres}}
-    password: ${DB_PASSWORD:${PGPASSWORD:postgres}}
+    # Use individual Railway PG* vars (PGHOST, PGPORT, PGDATABASE, PGUSER, PGPASSWORD).
+    # These are injected by Railway's PostgreSQL plugin alongside DATABASE_URL.
+    # Prefer these over DATABASE_URL to avoid the embedded-credential override problem:
+    # when Hikari passes separate username/password to the JDBC driver, they take
+    # precedence over credentials embedded in the URL — so using individual vars is safer.
+    # CI ensures PGHOST/PGUSER/PGPASSWORD are set (extracting from DATABASE_URL if missing).
+    # SPRING_DATASOURCE_URL can override the full URL for non-Railway environments.
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://${PGHOST:${DB_HOST:localhost}}:${PGPORT:${DB_PORT:5432}}/${PGDATABASE:${DB_NAME:naplanprep}}}
+    username: ${PGUSER:${DB_USERNAME:postgres}}
+    password: ${PGPASSWORD:${DB_PASSWORD:postgres}}
     driver-class-name: org.postgresql.Driver
     hikari:
       maximum-pool-size: 20
       connection-timeout: 30000
       initialization-fail-timeout: 60000
+      data-source-properties:
+        sslmode: prefer
   data:
     redis:
       # Railway injects REDIS_HOST/REDIS_PORT from linked Redis service

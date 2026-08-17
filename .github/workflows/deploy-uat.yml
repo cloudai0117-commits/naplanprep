@@ -145,60 +145,182 @@ jobs:
           railway_var "CI_SERVICE_PASSWORD"       "${{ secrets.CI_SERVICE_PASSWORD }}"
           echo "Env var step complete (failures are non-fatal — vars persist in Railway)"
 
-      - name: Verify Railway Stripe variables are set
-        # StripeConfigValidator (@Profile uat/prod) throws IllegalStateException at startup
-        # if any of these vars is missing/blank.  Fail fast here — before the 15-min
-        # deployment wait — so the error message is clear and actionable.
+      - name: Verify Railway critical variables and ensure DB credentials are separated
+        # IMPORTANT: 'variables' returns EnvironmentVariables! (SCALAR — JSON dict of name→value).
+        # Must NOT include {name value} subfield selection — that causes a GraphQL schema error.
+        #
+        # Checks required for UAT startup:
+        #   DB:    PGHOST, PGUSER, PGPASSWORD (or extractable from DATABASE_URL)
+        #   JWT:   JWT_PRIVATE_KEY, JWT_PUBLIC_KEY (JwtTokenProvider throws in uat if missing)
+        #   Stripe: 5 vars (StripeConfigValidator throws in uat if any missing)
+        #
+        # If PGHOST/PGUSER/PGPASSWORD are missing but DATABASE_URL has embedded credentials,
+        # extract them and upsert as separate Railway vars so Spring Boot can resolve them
+        # independently (Hikari/JDBC driver uses separate user/password props over URL-embedded).
         run: |
           VAR_RESP=$(curl -s --max-time 30 -X POST "${{ env.RAILWAY_API }}" \
             -H "Content-Type: application/json" \
             -H "Authorization: Bearer ${{ secrets.RAILWAY_TOKEN }}" \
-            -d "{\"query\":\"{variables(serviceId:\\\"${{ env.RAILWAY_BACKEND_SERVICE_ID }}\\\",environmentId:\\\"${{ env.RAILWAY_ENV_ID }}\\\",projectId:\\\"${{ env.RAILWAY_PROJECT_ID }}\\\"){name value}}\"}") \
-          || VAR_RESP='{"error":"curl_failed"}'
+            -d "{\"query\":\"{variables(serviceId:\\\"${{ env.RAILWAY_BACKEND_SERVICE_ID }}\\\",environmentId:\\\"${{ env.RAILWAY_ENV_ID }}\\\",projectId:\\\"${{ env.RAILWAY_PROJECT_ID }}\\\")}\"}" \
+          ) || VAR_RESP='{"error":"curl_failed"}'
 
           echo "$VAR_RESP" > /tmp/railway_vars.json
-          echo "Railway variables API raw response (first 2000 chars):"
-          head -c 2000 /tmp/railway_vars.json
+          echo "Railway variables API raw response (first 800 chars):"
+          head -c 800 /tmp/railway_vars.json
+          echo ""
 
+          # ── Parse vars and check DB / JWT / Stripe ────────────────────────────────
           python3 << 'PYEOF'
-          import json, sys
+          import json, sys, re
+
           try:
               d = json.load(open('/tmp/railway_vars.json'))
           except Exception as e:
               print('WARNING: Could not parse Railway variables response:', e)
-              print('Skipping Stripe var check — proceeding to deploy')
+              print('Skipping variable check — proceeding to deploy')
               sys.exit(0)
+
           errs = d.get('errors', [])
           if errs:
               print('WARNING: Railway variables query returned errors:', json.dumps(errs))
-              print('Stripe var check skipped — proceeding (check Railway dashboard manually)')
+              print('Variable check skipped — proceeding (verify Railway dashboard manually)')
               sys.exit(0)
-          vars_data = (d.get('data') or {}).get('variables', []) or []
-          if not vars_data and not d.get('data'):
-              print('WARNING: variables query returned no data (schema may differ) — skipping check')
+
+          # variables returns EnvironmentVariables! scalar — a JSON dict {name: value}
+          vars_data = (d.get('data') or {}).get('variables') or {}
+          if not isinstance(vars_data, dict):
+              print('WARNING: variables response is not a dict (got', type(vars_data).__name__, ') — skipping')
               sys.exit(0)
-          var_names = {v['name'] for v in vars_data if isinstance(v, dict) and 'name' in v}
-          required_stripe = ['STRIPE_SECRET_KEY','STRIPE_PUBLISHABLE_KEY','STRIPE_WEBHOOK_SECRET','STRIPE_ADVANCED_PRICE_ID','STRIPE_PRO_PRICE_ID']
-          missing = [v for v in required_stripe if v not in var_names]
+
+          var_names = set(vars_data.keys())
           print('RAILWAY_VARIABLES_TOTAL=' + str(len(var_names)))
+
+          # --- DB vars ---
+          db_url = vars_data.get('DATABASE_URL', '')
+          print('\n=== DATABASE VARIABLES ===')
+          for v in ['DATABASE_URL', 'PGHOST', 'PGPORT', 'PGDATABASE', 'PGUSER', 'PGPASSWORD']:
+              if v not in var_names:
+                  print(f'  RAILWAY_VAR_{v} = MISSING')
+              elif v in ('PGHOST', 'PGDATABASE', 'PGPORT', 'PGUSER'):
+                  print(f'  RAILWAY_VAR_{v} = SET ({vars_data[v]})')
+              elif v == 'DATABASE_URL':
+                  masked = re.sub(r'://[^:]+:[^@]+@', '://<user>:<pass>@', db_url)
+                  print(f'  RAILWAY_VAR_{v} = SET ({masked})')
+              else:
+                  print(f'  RAILWAY_VAR_{v} = SET')
+
+          # Write extracted values for the shell to use
+          need_pghost = 'PGHOST' not in var_names
+          need_pguser = 'PGUSER' not in var_names
+          need_pgpass = 'PGPASSWORD' not in var_names
+          need_pgport = 'PGPORT' not in var_names
+          need_pgdb   = 'PGDATABASE' not in var_names
+
+          if db_url and (need_pghost or need_pguser or need_pgpass or need_pgport or need_pgdb):
+              # Parse: postgresql://user:pass@host:port/db
+              m = re.match(r'postgresql://([^:]+):([^@]+)@([^:/]+):?(\d+)?/(\S+)', db_url)
+              if m:
+                  u, p, h, port, db = m.group(1), m.group(2), m.group(3), m.group(4) or '5432', m.group(5)
+                  print('\nExtracting missing PG* vars from DATABASE_URL:')
+                  with open('/tmp/pg_extract.env', 'w') as f:
+                      if need_pghost:   print(f'  PGHOST={h}');    f.write(f'PGHOST={h}\n')
+                      if need_pgport:   print(f'  PGPORT={port}');  f.write(f'PGPORT={port}\n')
+                      if need_pgdb:     print(f'  PGDATABASE={db}'); f.write(f'PGDATABASE={db}\n')
+                      if need_pguser:   print(f'  PGUSER={u}');    f.write(f'PGUSER={u}\n')
+                      if need_pgpass:   print('  PGPASSWORD=<masked>'); f.write(f'PGPASSWORD={p}\n')
+              else:
+                  print(f'\nWARNING: Could not parse DATABASE_URL for PG* extraction: {re.sub(r"//[^:]+:[^@]+@", "//<masked>@", db_url)}')
+
+          # --- JWT vars ---
+          jwt_vars = ['JWT_PRIVATE_KEY', 'JWT_PUBLIC_KEY']
+          print('\n=== JWT VARIABLES ===')
+          jwt_missing = [v for v in jwt_vars if v not in var_names]
+          for v in jwt_vars:
+              print(f'  RAILWAY_VAR_{v} = {"SET" if v in var_names else "MISSING"}')
+
+          # --- Stripe vars ---
+          required_stripe = ['STRIPE_SECRET_KEY','STRIPE_PUBLISHABLE_KEY','STRIPE_WEBHOOK_SECRET','STRIPE_ADVANCED_PRICE_ID','STRIPE_PRO_PRICE_ID']
+          print('\n=== STRIPE VARIABLES ===')
+          stripe_missing = [v for v in required_stripe if v not in var_names]
           for v in required_stripe:
-              print('RAILWAY_VAR_' + v + '=' + ('SET' if v in var_names else 'MISSING'))
-          if missing:
-              print('')
-              print('FAIL: The following Stripe vars are NOT set in Railway:')
-              for v in missing:
-                  print('  MISSING: ' + v)
-              print('')
-              print('Spring Boot will crash on startup (StripeConfigValidator @Profile uat).')
-              print('Fix A: set directly in Railway dashboard (Project → Backend → Variables)')
-              print('Fix B: add GitHub Actions secrets so CI sets them on next push:')
-              gh = {'STRIPE_SECRET_KEY':'STRIPE_TEST_SECRET_KEY','STRIPE_PUBLISHABLE_KEY':'STRIPE_TEST_PUBLISHABLE_KEY','STRIPE_WEBHOOK_SECRET':'STRIPE_TEST_WEBHOOK_SECRET','STRIPE_ADVANCED_PRICE_ID':'STRIPE_TEST_ADVANCED_PRICE_ID','STRIPE_PRO_PRICE_ID':'STRIPE_TEST_PRO_PRICE_ID'}
-              for v in missing:
-                  print('  GitHub secret ' + gh[v] + ' sets Railway var ' + v)
+              print(f'  RAILWAY_VAR_{v} = {"SET" if v in var_names else "MISSING"}')
+
+          # --- Gate ---
+          fail = False
+          if stripe_missing:
+              print('\nFAIL: Missing Stripe vars — StripeConfigValidator will crash Spring Boot:')
+              for v in stripe_missing:
+                  gh = {'STRIPE_SECRET_KEY':'STRIPE_TEST_SECRET_KEY','STRIPE_PUBLISHABLE_KEY':'STRIPE_TEST_PUBLISHABLE_KEY','STRIPE_WEBHOOK_SECRET':'STRIPE_TEST_WEBHOOK_SECRET','STRIPE_ADVANCED_PRICE_ID':'STRIPE_TEST_ADVANCED_PRICE_ID','STRIPE_PRO_PRICE_ID':'STRIPE_TEST_PRO_PRICE_ID'}
+                  print(f'  MISSING: {v}  (add GitHub secret {gh[v]} so CI can set it)')
+              fail = True
+          if jwt_missing:
+              print('\nFAIL: Missing JWT key vars — JwtTokenProvider throws IllegalStateException in uat:')
+              for v in jwt_missing:
+                  print(f'  MISSING: {v}  (set in Railway dashboard → Variables)')
+              fail = True
+          if 'DATABASE_URL' not in var_names and 'PGHOST' not in var_names:
+              print('\nFAIL: No DATABASE_URL or PGHOST — datasource URL will resolve to localhost:5432')
+              fail = True
+
+          if not fail:
+              print('\nRAILWAY_VARS_GATE = PASS — all critical variables present')
+          else:
+              print('\nRAILWAY_VARS_GATE = FAIL — fix missing variables before redeploying')
               sys.exit(1)
-          print('')
-          print('STRIPE_VARS_RAILWAY_CHECK = PASS (all 5 Stripe vars are configured in Railway)')
           PYEOF
+
+          # ── Upsert extracted PG* vars into Railway if they were missing ────────────
+          if [ -f /tmp/pg_extract.env ]; then
+            echo ""
+            echo "===== UPSERTING EXTRACTED PG* VARS INTO RAILWAY ====="
+            # Mask PGPASSWORD before it appears in any log output
+            PGPASS_LINE=$(grep '^PGPASSWORD=' /tmp/pg_extract.env || true)
+            if [ -n "$PGPASS_LINE" ]; then
+              PGPASS_VAL="${PGPASS_LINE#PGPASSWORD=}"
+              echo "::add-mask::$PGPASS_VAL"
+            fi
+            # Use Python for JSON-safe upsert (handles '=' and special chars in values)
+            export RAILWAY_TOKEN_VAL="${{ secrets.RAILWAY_TOKEN }}"
+            export RAILWAY_API_URL="${{ env.RAILWAY_API }}"
+            export PROJ_ID="${{ env.RAILWAY_PROJECT_ID }}"
+            export ENV_ID="${{ env.RAILWAY_ENV_ID }}"
+            export SVC_ID="${{ env.RAILWAY_BACKEND_SERVICE_ID }}"
+            python3 << 'UPSERTEOF'
+          import json, urllib.request, os
+          token   = os.environ.get('RAILWAY_TOKEN_VAL', '')
+          api_url = os.environ.get('RAILWAY_API_URL', '')
+          proj_id = os.environ.get('PROJ_ID', '')
+          env_id  = os.environ.get('ENV_ID', '')
+          svc_id  = os.environ.get('SVC_ID', '')
+          pairs = {}
+          with open('/tmp/pg_extract.env') as f:
+              for line in f:
+                  line = line.rstrip('\n')
+                  if '=' in line:
+                      k, v = line.split('=', 1)
+                      pairs[k] = v
+          for name, value in pairs.items():
+              display = '<masked>' if name == 'PGPASSWORD' else value
+              gql = {
+                  'query': 'mutation($proj:String!,$env:String!,$svc:String!,$n:String!,$v:String!){variableUpsert(input:{projectId:$proj,environmentId:$env,serviceId:$svc,name:$n,value:$v})}',
+                  'variables': {'proj': proj_id, 'env': env_id, 'svc': svc_id, 'n': name, 'v': value}
+              }
+              body = json.dumps(gql).encode()
+              req  = urllib.request.Request(api_url, data=body,
+                         headers={'Content-Type':'application/json','Authorization':'Bearer '+token})
+              try:
+                  with urllib.request.urlopen(req, timeout=30) as r:
+                      resp = json.load(r)
+                  errs = resp.get('errors', [])
+                  if errs:
+                      print(f'WARNING: upsert {name} errors: {errs}')
+                  else:
+                      print(f'Set {name}={display}')
+              except Exception as e:
+                  print(f'WARNING: upsert {name} failed: {e}')
+          UPSERTEOF
+            echo "PGVAR_UPSERT = DONE"
+          fi
 
       - name: Update Railway service source image
         # GHCR backend package is PUBLIC — no registry credentials needed.
