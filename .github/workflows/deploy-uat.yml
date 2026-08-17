@@ -145,84 +145,70 @@ jobs:
           railway_var "CI_SERVICE_PASSWORD"       "${{ secrets.CI_SERVICE_PASSWORD }}"
           echo "Env var step complete (failures are non-fatal — vars persist in Railway)"
 
-      - name: Configure GHCR pull credentials on Railway
-        # Sets GHCR pull credentials on the Railway backend service so it can pull
-        # private naplanprep-backend images. Uses Railway's GraphQL API — NOT Railway env vars.
+      - name: Update Railway service source — image and GHCR credentials
+        # Sets the exact immutable GHCR image (uat-<sha>) on Railway in ONE atomic call
+        # that also carries GHCR pull credentials so Railway can pull the private image.
         #
-        # Credential flow:
-        #   GHCR_READ_TOKEN GitHub Actions secret (PAT, read:packages only)
-        #   → introspect ServiceInstanceSourceInput to find credential field name
-        #   → serviceInstanceUpdate with {image, <credField>: {username, password}}
-        #   → Railway stores credential server-side for image pulls
+        # WHY ONE CALL: If credentials were set in a separate prior step and then the image
+        # were set again in a second step, the second serviceInstanceUpdate would overwrite
+        # (replace) the source object, wiping the credentials. One call prevents that.
         #
-        # PAT is masked via ::add-mask:: and passed exclusively as an env var to Python.
-        # It is never echoed, never written to shell history, never stored in Railway env vars.
+        # WHY inputFields: Railway's ServiceInstanceSourceInput is an INPUT_OBJECT type.
+        # GraphQL introspection uses `inputFields` for INPUT_OBJECT (not `fields`, which is
+        # for OBJECT types). The previous step used `fields` and always got empty — that was
+        # the reason credentials were never configured despite GHCR_READ_TOKEN being set.
         #
-        # If GHCR_READ_TOKEN is not configured: Railway must already have credentials set
-        # (one-time manual setup). Skips gracefully rather than failing.
-        # If Railway schema has no credential field: reports PRIVATE_REGISTRY_EXISTING_SERVICE_SUPPORT=NO.
+        # PAT (GHCR_READ_TOKEN) is masked via ::add-mask:: and passed exclusively as an env
+        # var to Python. It is never echoed, never in shell history, never in Railway env vars.
         env:
           GHCR_READ_TOKEN: ${{ secrets.GHCR_READ_TOKEN }}
         run: |
           TAG="${{ needs.build-and-push.outputs.image-tag }}"
           IMAGE="${{ env.BACKEND_IMAGE }}:$TAG"
-
-          if [ -z "$GHCR_READ_TOKEN" ]; then
-            echo "GHCR_READ_TOKEN secret not configured."
-            echo "Railway must already have GHCR credentials. If image pull fails (401/403),"
-            echo "add GHCR_READ_TOKEN as a GitHub Actions secret (GitHub PAT, read:packages only)"
-            echo "and re-run CI. See RAILWAY_GHCR_PRIVATE_REGISTRY_SETUP.md."
-            echo "CREDENTIAL_SETUP_SKIPPED = YES (secret not configured)"
-            exit 0
-          fi
-
-          echo "::add-mask::$GHCR_READ_TOKEN"
-          echo "===== CONFIGURING GHCR PULL CREDENTIALS ON RAILWAY ====="
-          echo "IMAGE=$IMAGE"
+          echo "===== UPDATE RAILWAY SERVICE SOURCE (IMAGE + GHCR CREDENTIALS) ====="
+          echo "EXPECTED_IMAGE=$IMAGE"
           echo ""
 
-          # Introspect ServiceInstanceSourceInput to find the credential field name.
-          # Railway may name it: imageCredentials, registryCredentials, credentials, auth
-          INSP=$(curl -s --max-time 30 -X POST "${{ env.RAILWAY_API }}" \
-            -H "Content-Type: application/json" \
-            -H "Authorization: Bearer ${{ secrets.RAILWAY_TOKEN }}" \
-            -d '{"query":"{ src: __type(name:\"ServiceInstanceSourceInput\") { fields { name } } }"}')
-
-          echo "--- ServiceInstanceSourceInput schema ---"
-          echo "$INSP" | python3 -m json.tool 2>/dev/null || echo "$INSP"
-
-          SOURCE_FIELDS=$(echo "$INSP" | python3 -c "import sys,json; d=json.load(sys.stdin); src=(d.get('data') or {}).get('src') or {}; names=[f['name'] for f in (src.get('fields') or [])]; print(' '.join(names))" 2>/dev/null || echo "")
-
-          echo "Available source fields: $SOURCE_FIELDS"
-
+          # ── Step A: Find credential inputField in ServiceInstanceSourceInput ─────
+          # INPUT_OBJECT types expose inputFields, not fields — prior step had this wrong.
           CRED_FIELD=""
-          for candidate in imageCredentials registryCredentials credentials auth; do
-            if echo " $SOURCE_FIELDS " | grep -qw "$candidate"; then
-              CRED_FIELD="$candidate"
-              break
-            fi
-          done
+          if [ -n "$GHCR_READ_TOKEN" ]; then
+            echo "::add-mask::$GHCR_READ_TOKEN"
+            echo "GHCR_READ_TOKEN: present — introspecting ServiceInstanceSourceInput inputFields"
 
-          if [ -z "$CRED_FIELD" ]; then
-            echo ""
-            echo "PRIVATE_REGISTRY_EXISTING_SERVICE_SUPPORT = NO"
-            echo "  No credential field found in ServiceInstanceSourceInput."
-            echo "  Available fields: $SOURCE_FIELDS"
-            echo "  Cannot configure GHCR pull credentials via serviceInstanceUpdate."
-            echo "  If image pull fails (401/403 in Railway deploy logs):"
-            echo "  See RAILWAY_GHCR_PRIVATE_REGISTRY_SETUP.md for alternatives."
-            echo "===== END CREDENTIAL CONFIGURATION ====="
-            exit 0
+            INSP=$(curl -s --max-time 30 -X POST "${{ env.RAILWAY_API }}" \
+              -H "Content-Type: application/json" \
+              -H "Authorization: Bearer ${{ secrets.RAILWAY_TOKEN }}" \
+              -d '{"query":"{ src: __type(name:\"ServiceInstanceSourceInput\") { kind inputFields { name } } }"}')
+
+            echo "--- ServiceInstanceSourceInput schema (inputFields) ---"
+            echo "$INSP" | python3 -m json.tool 2>/dev/null || echo "$INSP"
+
+            SOURCE_FIELDS=$(echo "$INSP" | python3 -c "import sys,json; d=json.load(sys.stdin); src=(d.get('data') or {}).get('src') or {}; names=[f['name'] for f in (src.get('inputFields') or [])]; print(' '.join(names))" 2>/dev/null || echo "")
+            echo "Available source inputFields: $SOURCE_FIELDS"
+
+            for candidate in imageCredentials registryCredentials dockerCredentials credentials auth; do
+              if echo " $SOURCE_FIELDS " | grep -qw "$candidate"; then
+                CRED_FIELD="$candidate"
+                break
+              fi
+            done
+
+            if [ -n "$CRED_FIELD" ]; then
+              echo "CREDENTIAL_FIELD_FOUND = $CRED_FIELD"
+            else
+              echo "PRIVATE_REGISTRY_EXISTING_SERVICE_SUPPORT = NO"
+              echo "  No credential inputField found in ServiceInstanceSourceInput."
+              echo "  Available inputFields: $SOURCE_FIELDS"
+              echo "  Proceeding with image-only update — Railway must have pre-set credentials."
+            fi
+          else
+            echo "GHCR_READ_TOKEN not configured — image-only update (no credentials)"
           fi
 
-          echo "CREDENTIAL_FIELD = $CRED_FIELD"
-          echo "PRIVATE_REGISTRY_API_SUPPORTED = YES"
-          echo ""
-
-          # Build GraphQL payload via Python — avoids shell quoting/escaping for PAT.
-          # RAILWAY_IMAGE and RAILWAY_CRED_FIELD are exported so Python can read them.
+          # ── Step B: Build serviceInstanceUpdate payload (image + optional creds) ──
           export RAILWAY_IMAGE="$IMAGE"
-          export RAILWAY_CRED_FIELD="$CRED_FIELD"
+          export RAILWAY_CRED_FIELD="${CRED_FIELD:-}"
           python3 << 'PYEOF'
           import json, os, sys
 
@@ -232,74 +218,38 @@ jobs:
           field  = os.environ.get('RAILWAY_CRED_FIELD', '')
           pat    = os.environ.get('GHCR_READ_TOKEN', '')
 
-          if not image or not field or not pat:
-              print("FAIL: RAILWAY_IMAGE, RAILWAY_CRED_FIELD, or GHCR_READ_TOKEN env var missing")
-              sys.exit(1)
+          if field and pat:
+              source_gql = (
+                  'image:"' + image + '",'
+                  + field + ':{username:"cloudai0117-commits",password:"' + pat + '"}'
+              )
+              print(f"Payload: image={image}, credential={field} (PAT is masked in CI logs)")
+          else:
+              source_gql = 'image:"' + image + '"'
+              print(f"Payload: image={image}, no credentials")
 
           gql = (
               'mutation{serviceInstanceUpdate('
               + 'serviceId:"' + svc_id + '",'
               + 'environmentId:"' + env_id + '",'
-              + 'input:{source:{'
-              + 'image:"' + image + '",'
-              + field + ':{username:"cloudai0117-commits",'
-              + 'password:"' + pat + '"'
-              + '}}'
-              + ',startCommand:null'
-              + '})'
-              + '}'
+              + 'input:{source:{' + source_gql + '},startCommand:null}'
+              + ')}'
           )
-
-          payload = json.dumps({'query': gql})
-          with open('/tmp/ghcr_cred_payload.json', 'w') as f:
-              f.write(payload)
-          print(f'Payload built. field={field}, image={image}. PAT is masked in CI logs.')
+          with open('/tmp/svc_update_payload.json', 'w') as f:
+              f.write(json.dumps({'query': gql}))
           PYEOF
 
           if [ $? -ne 0 ]; then
-            echo "FAIL: Could not build credential payload"
+            echo "FAIL: Could not build serviceInstanceUpdate payload"
             exit 1
           fi
 
-          CRED_RESP=$(curl -s --max-time 30 -X POST "${{ env.RAILWAY_API }}" \
-            -H "Content-Type: application/json" \
-            -H "Authorization: Bearer ${{ secrets.RAILWAY_TOKEN }}" \
-            -d @/tmp/ghcr_cred_payload.json)
-          rm -f /tmp/ghcr_cred_payload.json
-
-          echo "serviceInstanceUpdate (with credentials) response:"
-          echo "$CRED_RESP" | python3 -m json.tool 2>/dev/null || echo "$CRED_RESP"
-
-          GQL_ERRORS=$(echo "$CRED_RESP" | python3 -c "import sys,json; d=json.load(sys.stdin); errs=d.get('errors',[]); print('ERRORS: '+json.dumps(errs) if errs else 'OK')" 2>/dev/null || echo "PARSE_ERROR")
-
-          if [ "$GQL_ERRORS" = "OK" ]; then
-            echo ""
-            echo "PRIVATE_REGISTRY_AUTH_SUPPORTED = YES"
-            echo "CURRENT_CREDENTIAL_CONFIGURED = YES (via $CRED_FIELD)"
-            echo "RAILWAY_GHCR_CREDENTIAL = CONFIGURED"
-          else
-            echo ""
-            echo "WARN: serviceInstanceUpdate returned: $GQL_ERRORS"
-            echo "CURRENT_CREDENTIAL_CONFIGURED = NO"
-            echo "RAILWAY_GHCR_CREDENTIAL = NOT_CONFIRMED"
-            echo "If Railway image pull fails (401/403), see RAILWAY_GHCR_PRIVATE_REGISTRY_SETUP.md"
-          fi
-          echo "===== END CREDENTIAL CONFIGURATION ====="
-
-      - name: Update Railway service source image and verify
-        # Sets the exact immutable GHCR image (uat-<sha>) as the service source.
-        # After the update, queries the serviceInstance to confirm the source persisted —
-        # Railway returns HTTP 200 for all GraphQL calls; a silent failure here would
-        # cause every downstream deploy trigger to run the OLD image.
-        run: |
-          TAG="${{ needs.build-and-push.outputs.image-tag }}"
-          IMAGE="${{ env.BACKEND_IMAGE }}:$TAG"
-          echo "Setting Railway service source image to: $IMAGE"
-
+          # ── Step C: Execute the update ────────────────────────────────────────────
           UPDATE_RESP=$(curl -s --max-time 30 -X POST "${{ env.RAILWAY_API }}" \
             -H "Content-Type: application/json" \
             -H "Authorization: Bearer ${{ secrets.RAILWAY_TOKEN }}" \
-            -d "{\"query\":\"mutation{serviceInstanceUpdate(serviceId:\\\"${{ env.RAILWAY_BACKEND_SERVICE_ID }}\\\",environmentId:\\\"${{ env.RAILWAY_ENV_ID }}\\\",input:{source:{image:\\\"$IMAGE\\\"},startCommand:null})}\"}")
+            -d @/tmp/svc_update_payload.json)
+          rm -f /tmp/svc_update_payload.json
 
           echo "serviceInstanceUpdate response:"
           echo "$UPDATE_RESP" | python3 -m json.tool 2>/dev/null || echo "$UPDATE_RESP"
@@ -311,8 +261,7 @@ jobs:
             exit 1
           fi
 
-          # Verify the source actually persisted — a silent no-op here means every
-          # deploy trigger runs the old image, not uat-<sha>.
+          # ── Step D: Verify the source image actually persisted ────────────────────
           echo ""
           echo "Verifying service source was updated..."
           INSTANCE_RESP=$(curl -s --max-time 30 -X POST "${{ env.RAILWAY_API }}" \
@@ -335,7 +284,13 @@ jobs:
             echo "      Check RAILWAY_TOKEN permissions and Railway service configuration."
             exit 1
           fi
+
           echo "SERVICE_IMAGE_SOURCE_VERIFIED = PASS"
+          if [ -n "$CRED_FIELD" ]; then
+            echo "RAILWAY_GHCR_CREDENTIAL = CONFIGURED (field=$CRED_FIELD)"
+          else
+            echo "RAILWAY_GHCR_CREDENTIAL = NOT_SET (no inputField found or token missing)"
+          fi
           echo "SERVICE_IMAGE_UPDATE = PASS"
 
       - name: Deploy new Railway service image
@@ -988,12 +943,13 @@ jobs:
               print("      from before V381/V382 migrations were introduced.")
               print()
               print("      TO FIX:")
-              print("      Option A (preferred): Go to GitHub → Your profile → Packages →")
-              print("                            naplanprep-backend → Package settings →")
-              print("                            Change visibility → Public.")
-              print("                            Railway will then pull without credentials.")
-              print("      Option B: Configure Railway with GHCR pull credentials via Railway")
-              print("                dashboard → Service → Settings → Source → Registry creds.")
+              print("      Railway cannot pull the private GHCR image. GHCR_READ_TOKEN (GitHub PAT,")
+              print("      read:packages scope) must be set as a GitHub Actions secret so CI can")
+              print("      configure Railway's GHCR pull credentials via serviceInstanceUpdate.")
+              print("      1. Ensure GHCR_READ_TOKEN is set in Repository → Settings → Secrets → Actions")
+              print("      2. Re-run CI — the 'Update Railway service source' step sets Railway credentials")
+              print("         via GraphQL API (Railway UI has no credential field for existing services).")
+              print("      See RAILWAY_GHCR_PRIVATE_REGISTRY_SETUP.md for PAT setup instructions.")
               print()
               print("      FORBIDDEN_POOL_COUNTS detected in response:")
               forbidden = {96, 112, 128, 104, 72, 43}
