@@ -202,29 +202,17 @@ jobs:
 
       - name: Deploy new Railway service image
         id: trigger-deploy
-        # Confirmed no-ops (return true, create nothing):
-        #   environmentTriggersDeploy — silent no-op for this service
-        #   deploymentRestart         — returns true, no new deployment appears
-        # Confirmed does not exist in Railway schema:
-        #   deploymentCreate
-        #
-        # Strategy (in order):
-        #   1. Introspect Railway schema — print all mutation names to CI log for diagnostics
-        #   2. Try serviceInstanceRedeploy(serviceId, environmentId) — "Deploy a service"
-        #      distinct from deploymentRestart ("Restart a deployment")
-        #   3. If that mutation does not exist: install Railway CLI and railway redeploy
-        #      (the CLI encapsulates the correct current Railway deploy API)
-        #
-        # New deployment is identified by:
-        #   (a) deployment ID returned directly by the mutation, OR
-        #   (b) polling for any deployment with createdAt > PRE_TRIGGER_TIME AND id != PREV_ID
+        # serviceInstanceRedeploy = restart the currently running container (does NOT pull new image).
+        # serviceInstanceDeployV2 = proper new deployment that pulls the configured source image.
+        # Strategy:
+        #   1. Capture previous deployment ID
+        #   2. Try serviceInstanceDeployV2 — forces a proper image pull from GHCR
+        #   3. If no new deployment appears within 30s: try serviceInstanceRedeploy as fallback
+        #   4. Poll for new deployment ID (id != PREVIOUS and createdAt >= PRE_TRIGGER_TIME)
         run: |
           TAG="${{ needs.build-and-push.outputs.image-tag }}"
           IMAGE="${{ env.BACKEND_IMAGE }}:$TAG"
           DIGEST="${{ needs.build-and-push.outputs.backend-digest }}"
-          # Include milliseconds so "14:48:07.000Z" > "14:48:07.460Z" compares correctly.
-          # Without .000 suffix Railway's .460Z response sorts BEFORE the trigger time
-          # in ASCII comparison ("." = 46 < "Z" = 90) causing false "no new deployment".
           PRE_TRIGGER_TIME=$(date -u +"%Y-%m-%dT%H:%M:%S.000Z")
 
           echo "===== DEPLOY NEW RAILWAY IMAGE ====="
@@ -233,7 +221,7 @@ jobs:
           echo "EXPECTED_DIGEST=${DIGEST:-MISSING}"
           echo "PRE_TRIGGER_TIME=$PRE_TRIGGER_TIME"
 
-          # ── Step 1: Capture previous deployment ID so we can detect the NEW one ──
+          # ── Step 1: Capture previous deployment ID ──────────────────────────────
           curl -s --max-time 30 -X POST "${{ env.RAILWAY_API }}" \
             -H "Content-Type: application/json" \
             -H "Authorization: Bearer ${{ secrets.RAILWAY_TOKEN }}" \
@@ -243,53 +231,32 @@ jobs:
           PREVIOUS_DEPLOY_ID=$(python3 -c "import json; d=json.load(open('/tmp/pre_deploys.json')); nodes=[e['node'] for e in d.get('data',{}).get('deployments',{}).get('edges',[])]; nodes.sort(key=lambda n:n.get('createdAt',''),reverse=True); succ=[n for n in nodes if n.get('status') in ('SUCCESS','ACTIVE')]; print(succ[0]['id'] if succ else (nodes[0]['id'] if nodes else ''))" 2>/dev/null || echo "")
           echo "PREVIOUS_DEPLOYMENT_ID=$PREVIOUS_DEPLOY_ID"
 
-          # ── Step 2: Introspect Railway schema — print all mutation names ──────────
+          # ── Step 2: serviceInstanceDeployV2 — pulls the configured source image ──
+          # Unlike serviceInstanceRedeploy (which restarts the running container without
+          # pulling new image), DeployV2 triggers a proper new deployment that fetches
+          # the configured source image from GHCR.
           echo ""
-          echo "===== RAILWAY SCHEMA INTROSPECTION (all mutations) ====="
-          SCHEMA_RESP=$(curl -s --max-time 30 -X POST "${{ env.RAILWAY_API }}" \
+          echo "Attempting serviceInstanceDeployV2(serviceId, environmentId)..."
+          DEPLOYV2_RESP=$(curl -s --max-time 30 -X POST "${{ env.RAILWAY_API }}" \
             -H "Content-Type: application/json" \
             -H "Authorization: Bearer ${{ secrets.RAILWAY_TOKEN }}" \
-            -d '{"query":"{__schema{mutationType{fields{name}}}}"}')
-          python3 -c "import sys,json; d=json.load(sys.stdin); fields=d.get('data',{}).get('__schema',{}).get('mutationType',{}).get('fields',[]); names=[f['name'] for f in fields]; names.sort(); [print(' ',n) for n in names]" <<< "$SCHEMA_RESP" 2>/dev/null || echo "(schema introspection failed — $SCHEMA_RESP)"
-          echo "===== END SCHEMA INTROSPECTION ====="
-          echo ""
+            -d "{\"query\":\"mutation{serviceInstanceDeployV2(serviceId:\\\"${{ env.RAILWAY_BACKEND_SERVICE_ID }}\\\",environmentId:\\\"${{ env.RAILWAY_ENV_ID }}\\\")}\"}")
 
-          # Extract service-related mutation names for logging
-          SERVICE_MUTATIONS=$(python3 -c "import sys,json; d=json.load(sys.stdin); fields=d.get('data',{}).get('__schema',{}).get('mutationType',{}).get('fields',[]); names=[f['name'] for f in fields if 'service' in f['name'].lower() or 'deploy' in f['name'].lower()]; print(','.join(sorted(names)))" <<< "$SCHEMA_RESP" 2>/dev/null || echo "")
-          echo "SERVICE/DEPLOY MUTATIONS AVAILABLE: $SERVICE_MUTATIONS"
+          echo "serviceInstanceDeployV2 response:"
+          echo "$DEPLOYV2_RESP" | python3 -m json.tool 2>/dev/null || echo "$DEPLOYV2_RESP"
 
-          # ── Step 3: Try serviceInstanceRedeploy ──────────────────────────────────
-          echo ""
-          echo "Attempting serviceInstanceRedeploy(serviceId, environmentId)..."
-          REDEPLOY_RESP=$(curl -s --max-time 30 -X POST "${{ env.RAILWAY_API }}" \
-            -H "Content-Type: application/json" \
-            -H "Authorization: Bearer ${{ secrets.RAILWAY_TOKEN }}" \
-            -d "{\"query\":\"mutation{serviceInstanceRedeploy(serviceId:\\\"${{ env.RAILWAY_BACKEND_SERVICE_ID }}\\\",environmentId:\\\"${{ env.RAILWAY_ENV_ID }}\\\")}\"}")
+          DEPLOYV2_GQL_ERRORS=$(echo "$DEPLOYV2_RESP" | python3 -c "import sys,json; d=json.load(sys.stdin); errs=d.get('errors',[]); print('ERRORS: '+json.dumps(errs) if errs else 'OK')" 2>/dev/null || echo "PARSE_ERROR")
 
-          echo "serviceInstanceRedeploy response:"
-          echo "$REDEPLOY_RESP" | python3 -m json.tool 2>/dev/null || echo "$REDEPLOY_RESP"
-
-          REDEPLOY_GQL_ERRORS=$(echo "$REDEPLOY_RESP" | python3 -c "import sys,json; d=json.load(sys.stdin); errs=d.get('errors',[]); print('ERRORS: '+json.dumps(errs) if errs else 'OK')" 2>/dev/null || echo "PARSE_ERROR")
-
-          if [ "$REDEPLOY_GQL_ERRORS" = "OK" ]; then
-            echo "serviceInstanceRedeploy = ACCEPTED (no GQL errors)"
+          if [ "$DEPLOYV2_GQL_ERRORS" = "OK" ]; then
+            echo "serviceInstanceDeployV2 = ACCEPTED"
           else
-            echo "serviceInstanceRedeploy failed: $REDEPLOY_GQL_ERRORS"
-            echo ""
-            echo "Falling back to Railway CLI redeploy..."
-
-            # ── Step 4: Railway CLI fallback ────────────────────────────────────────
-            # The CLI encapsulates the correct current Railway deploy API internally.
-            echo "Installing Railway CLI..."
-            npm install -g @railway/cli 2>&1 | tail -3
-            railway --version
-
-            echo "Running: railway redeploy --service ${{ env.RAILWAY_BACKEND_SERVICE_ID }} --yes"
-            RAILWAY_TOKEN="${{ secrets.RAILWAY_TOKEN }}" \
-            railway redeploy \
-              --service "${{ env.RAILWAY_BACKEND_SERVICE_ID }}" \
-              --yes || true
-            echo "Railway CLI redeploy exit: $?"
+            echo "serviceInstanceDeployV2 failed: $DEPLOYV2_GQL_ERRORS"
+            echo "Falling back to serviceInstanceRedeploy..."
+            REDEPLOY_RESP=$(curl -s --max-time 30 -X POST "${{ env.RAILWAY_API }}" \
+              -H "Content-Type: application/json" \
+              -H "Authorization: Bearer ${{ secrets.RAILWAY_TOKEN }}" \
+              -d "{\"query\":\"mutation{serviceInstanceRedeploy(serviceId:\\\"${{ env.RAILWAY_BACKEND_SERVICE_ID }}\\\",environmentId:\\\"${{ env.RAILWAY_ENV_ID }}\\\")}\"}")
+            echo "serviceInstanceRedeploy response: $REDEPLOY_RESP"
           fi
 
           # ── Step 5: Poll for the new deployment ─────────────────────────────────
