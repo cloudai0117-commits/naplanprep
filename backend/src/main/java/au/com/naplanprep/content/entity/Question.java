@@ -2,6 +2,7 @@ package au.com.naplanprep.content.entity;
 
 import au.com.naplanprep.exam.entity.PackageType;
 import au.com.naplanprep.exam.entity.Stimulus;
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.*;
 import lombok.*;
 import org.hibernate.annotations.CreationTimestamp;
@@ -82,6 +83,7 @@ public class Question {
     private String stimulusType;
 
     /** Link to a shared Stimulus (passage, audio, image). */
+    @JsonIgnore
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "stimulus_id")
     private Stimulus stimulus;

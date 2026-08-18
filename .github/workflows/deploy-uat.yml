@@ -135,11 +135,11 @@ jobs:
               -d "{\"query\":\"mutation{variableUpsert(input:{projectId:\\\"${{ env.RAILWAY_PROJECT_ID }}\\\",environmentId:\\\"${{ env.RAILWAY_ENV_ID }}\\\",serviceId:\\\"${{ env.RAILWAY_BACKEND_SERVICE_ID }}\\\",name:\\\"$1\\\",value:\\\"$2\\\"})}\"}"\
               > /dev/null && echo "Set $1" || echo "Warning: failed to set $1 (env var may already be set in Railway)"
           }
-          railway_var "STRIPE_SECRET_KEY"         "${{ secrets.STRIPE_TEST_SECRET_KEY }}"
-          railway_var "STRIPE_WEBHOOK_SECRET"     "${{ secrets.STRIPE_TEST_WEBHOOK_SECRET }}"
-          railway_var "STRIPE_PUBLISHABLE_KEY"    "${{ secrets.STRIPE_TEST_PUBLISHABLE_KEY }}"
-          railway_var "STRIPE_ADVANCED_PRICE_ID"  "${{ secrets.STRIPE_TEST_ADVANCED_PRICE_ID }}"
-          railway_var "STRIPE_PRO_PRICE_ID"       "${{ secrets.STRIPE_TEST_PRO_PRICE_ID }}"
+          railway_var "STRIPE_SECRET_KEY"         "${{ secrets.STRIPE_SECRET_KEY }}"
+          railway_var "STRIPE_WEBHOOK_SECRET"     "${{ secrets.STRIPE_WEBHOOK_SECRET }}"
+          railway_var "STRIPE_PUBLISHABLE_KEY"    "${{ secrets.STRIPE_PUBLISHABLE_KEY }}"
+          railway_var "STRIPE_ADVANCED_PRICE_ID"  "${{ secrets.STRIPE_ADVANCED_PRICE_ID }}"
+          railway_var "STRIPE_PRO_PRICE_ID"       "${{ secrets.STRIPE_PRO_PRICE_ID }}"
           railway_var "SPRING_PROFILES_ACTIVE"    "uat"
           railway_var "CI_SERVICE_EMAIL"          "${{ secrets.CI_SERVICE_EMAIL }}"
           railway_var "CI_SERVICE_PASSWORD"       "${{ secrets.CI_SERVICE_PASSWORD }}"
@@ -218,7 +218,7 @@ jobs:
 
           if db_url and (need_pghost or need_pguser or need_pgpass or need_pgport or need_pgdb):
               # Parse: postgresql://user:pass@host:port/db
-              m = re.match(r'postgresql://([^:]+):([^@]+)@([^:/]+):?(\d+)?/(\S+)', db_url)
+              m = re.match(r'postgres(?:ql)?://([^:]+):([^@]+)@([^:/]+):?(\d+)?/(\S+)', db_url)
               if m:
                   u, p, h, port, db = m.group(1), m.group(2), m.group(3), m.group(4) or '5432', m.group(5)
                   print('\nExtracting missing PG* vars from DATABASE_URL:')
@@ -250,7 +250,7 @@ jobs:
           if stripe_missing:
               print('\nFAIL: Missing Stripe vars — StripeConfigValidator will crash Spring Boot:')
               for v in stripe_missing:
-                  gh = {'STRIPE_SECRET_KEY':'STRIPE_TEST_SECRET_KEY','STRIPE_PUBLISHABLE_KEY':'STRIPE_TEST_PUBLISHABLE_KEY','STRIPE_WEBHOOK_SECRET':'STRIPE_TEST_WEBHOOK_SECRET','STRIPE_ADVANCED_PRICE_ID':'STRIPE_TEST_ADVANCED_PRICE_ID','STRIPE_PRO_PRICE_ID':'STRIPE_TEST_PRO_PRICE_ID'}
+                  gh = {'STRIPE_SECRET_KEY':'STRIPE_SECRET_KEY','STRIPE_PUBLISHABLE_KEY':'STRIPE_PUBLISHABLE_KEY','STRIPE_WEBHOOK_SECRET':'STRIPE_WEBHOOK_SECRET','STRIPE_ADVANCED_PRICE_ID':'STRIPE_ADVANCED_PRICE_ID','STRIPE_PRO_PRICE_ID':'STRIPE_PRO_PRICE_ID'}
                   print(f'  MISSING: {v}  (add GitHub secret {gh[v]} so CI can set it)')
               fail = True
           if jwt_missing:
@@ -1649,7 +1649,7 @@ jobs:
         working-directory: naplanprep-tests/api-tests
         env:
           API_BASE_URL: ${{ vars.UAT_API_URL }}
-          STRIPE_WEBHOOK_SECRET: ${{ secrets.STRIPE_TEST_WEBHOOK_SECRET }}
+          STRIPE_WEBHOOK_SECRET: ${{ secrets.STRIPE_WEBHOOK_SECRET }}
         run: |
           mvn test \
             -Dapi.base.url="${{ vars.UAT_API_URL }}" \
