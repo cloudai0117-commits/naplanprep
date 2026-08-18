@@ -1582,11 +1582,12 @@ jobs:
   # freshly deployed UAT environment.
   #
   # Prerequisites:
-  #   - TESTS_REPO_TOKEN secret: PAT with actions:read + repo:read on the
-  #     naplanprep-tests repository (if private). Omit if repo is public
-  #     (GITHUB_TOKEN can read public repos).
+  #   - UAT_TESTS_REPO_TOKEN secret (REQUIRED — repo is private):
+  #       A PAT with contents:read access to cloudai0117-commits/naplanprep-tests.
+  #       GITHUB_TOKEN cannot cross repository boundaries for private repos;
+  #       the checkout will 404 without this secret.
   #   - UAT_TESTS_REPO_OWNER variable (optional): GitHub org/user owning
-  #     naplanprep-tests. Defaults to this repo's owner.
+  #       naplanprep-tests. Defaults to this repo's owner (cloudai0117-commits).
   #   - UAT_API_URL variable: backend base URL (used as api.base.url)
   #   - UAT_FRONTEND_URL variable: frontend base URL (used as BASE_URL)
   # ─────────────────────────────────────────────────────────────────────────────
@@ -1599,11 +1600,42 @@ jobs:
       contents: read
 
     steps:
+      - name: Verify naplanprep-tests repository access
+        # Fail fast with a clear message before checkout attempts the 404.
+        # GITHUB_TOKEN cannot read a separate private repository — UAT_TESTS_REPO_TOKEN
+        # (contents:read on cloudai0117-commits/naplanprep-tests) is required.
+        run: |
+          TESTS_REPO="${{ vars.UAT_TESTS_REPO_OWNER != '' && format('{0}/naplanprep-tests', vars.UAT_TESTS_REPO_OWNER) || format('{0}/naplanprep-tests', github.repository_owner) }}"
+          TOKEN="${{ secrets.UAT_TESTS_REPO_TOKEN }}"
+          echo "TEST_REPOSITORY=$TESTS_REPO"
+          echo "TOKEN_CONFIGURED=$( [ -n "$TOKEN" ] && echo YES || echo NO )"
+          if [ -z "$TOKEN" ]; then
+            echo "FAIL: UAT_TESTS_REPO_TOKEN secret is not set."
+            echo "  naplanprep-tests is a private repository — GITHUB_TOKEN cannot access it."
+            echo "  Add a PAT with contents:read on cloudai0117-commits/naplanprep-tests"
+            echo "  as secret UAT_TESTS_REPO_TOKEN in the naplanprep repository settings."
+            echo "UAT_TEST_REPOSITORY_ACCESS = FAIL"
+            exit 1
+          fi
+          HTTP=$(curl -s -o /dev/null -w "%{http_code}" \
+            -H "Authorization: Bearer $TOKEN" \
+            "https://api.github.com/repos/$TESTS_REPO" 2>/dev/null || echo "000")
+          echo "GITHUB_API_HTTP=$HTTP"
+          if [ "$HTTP" = "200" ]; then
+            echo "UAT_TEST_REPOSITORY_ACCESS = PASS"
+          else
+            echo "FAIL: GitHub API returned HTTP $HTTP for $TESTS_REPO"
+            echo "  UAT_TESTS_REPO_TOKEN may be expired or lack contents:read."
+            echo "UAT_TEST_REPOSITORY_ACCESS = FAIL"
+            exit 1
+          fi
+
       - name: Checkout naplanprep-tests
         uses: actions/checkout@v4.2.2
         with:
           repository: ${{ vars.UAT_TESTS_REPO_OWNER != '' && format('{0}/naplanprep-tests', vars.UAT_TESTS_REPO_OWNER) || format('{0}/naplanprep-tests', github.repository_owner) }}
-          token: ${{ secrets.TESTS_REPO_TOKEN || secrets.GITHUB_TOKEN }}
+          token: ${{ secrets.UAT_TESTS_REPO_TOKEN }}
+          ref: main
           path: naplanprep-tests
 
       - name: Set up Java 21
